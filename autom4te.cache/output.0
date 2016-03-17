@@ -3928,7 +3928,7 @@ if test "$PHP_PHP_TRACER" != "no"; then
 
 
   old_IFS=$IFS
-  for ac_src in php_tracer.c; do
+  for ac_src in php_tracer.c slog.c; do
   
       IFS=.
       set $ac_src
@@ -3977,7 +3977,7 @@ EOF
 
 
   old_IFS=$IFS
-  for ac_src in php_tracer.c; do
+  for ac_src in php_tracer.c slog.c; do
   
       IFS=.
       set $ac_src
@@ -4107,7 +4107,7 @@ _ACEOF
 
 
   old_IFS=$IFS
-  for ac_src in php_tracer.c; do
+  for ac_src in php_tracer.c slog.c; do
   
       IFS=.
       set $ac_src
@@ -4153,7 +4153,7 @@ EOF
 
 
   old_IFS=$IFS
-  for ac_src in php_tracer.c; do
+  for ac_src in php_tracer.c slog.c; do
   
       IFS=.
       set $ac_src

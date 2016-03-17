@@ -59,5 +59,5 @@ if test "$PHP_PHP_TRACER" != "no"; then
   dnl
   dnl PHP_SUBST(PHP_TRACER_SHARED_LIBADD)
 
-  PHP_NEW_EXTENSION(php_tracer, php_tracer.c, $ext_shared)
+  PHP_NEW_EXTENSION(php_tracer, php_tracer.c slog.c, $ext_shared)
 fi

@@ -1,7 +1,7 @@
-srcdir = /home/liangzx/php-src/ext/php_tracer
-builddir = /home/liangzx/php-src/ext/php_tracer
-top_srcdir = /home/liangzx/php-src/ext/php_tracer
-top_builddir = /home/liangzx/php-src/ext/php_tracer
+srcdir = /home/sibylla/php/php-src/ext/php_tracer
+builddir = /home/sibylla/php/php-src/ext/php_tracer
+top_srcdir = /home/sibylla/php/php-src/ext/php_tracer
+top_builddir = /home/sibylla/php/php-src/ext/php_tracer
 EGREP = /bin/grep -E
 SED = /bin/sed
 CONFIGURE_COMMAND = './configure'
@@ -11,7 +11,7 @@ SHLIB_DL_SUFFIX_NAME = so
 ZEND_EXT_TYPE = zend_extension
 RE2C = exit 0;
 AWK = nawk
-shared_objects_php_tracer = php_tracer.lo
+shared_objects_php_tracer = php_tracer.lo slog.lo
 PHP_PECL_EXTENSION = php_tracer
 PHP_MODULES = $(phplibdir)/php_tracer.la
 PHP_ZEND_EX =
@@ -21,7 +21,7 @@ prefix = /usr
 exec_prefix = $(prefix)
 libdir = ${exec_prefix}/lib
 prefix = /usr
-phplibdir = /home/liangzx/php-src/ext/php_tracer/modules
+phplibdir = /home/sibylla/php/php-src/ext/php_tracer/modules
 phpincludedir = /usr/include/php5
 CC = cc
 CFLAGS = -g -O2
@@ -176,8 +176,10 @@ distclean: clean
 
 .PHONY: all clean install distclean test
 .NOEXPORT:
-php_tracer.lo: /home/liangzx/php-src/ext/php_tracer/php_tracer.c
-	$(LIBTOOL) --mode=compile $(CC)  -I. -I/home/liangzx/php-src/ext/php_tracer $(COMMON_FLAGS) $(CFLAGS_CLEAN) $(EXTRA_CFLAGS)  -c /home/liangzx/php-src/ext/php_tracer/php_tracer.c -o php_tracer.lo 
+php_tracer.lo: /home/sibylla/php/php-src/ext/php_tracer/php_tracer.c
+	$(LIBTOOL) --mode=compile $(CC)  -I. -I/home/sibylla/php/php-src/ext/php_tracer $(COMMON_FLAGS) $(CFLAGS_CLEAN) $(EXTRA_CFLAGS)  -c /home/sibylla/php/php-src/ext/php_tracer/php_tracer.c -o php_tracer.lo 
+slog.lo: /home/sibylla/php/php-src/ext/php_tracer/slog.c
+	$(LIBTOOL) --mode=compile $(CC)  -I. -I/home/sibylla/php/php-src/ext/php_tracer $(COMMON_FLAGS) $(CFLAGS_CLEAN) $(EXTRA_CFLAGS)  -c /home/sibylla/php/php-src/ext/php_tracer/slog.c -o slog.lo 
 $(phplibdir)/php_tracer.la: ./php_tracer.la
 	$(LIBTOOL) --mode=install cp ./php_tracer.la $(phplibdir)
 

@@ -26,9 +26,10 @@
 #include "php_ini.h"
 #include "ext/standard/info.h"
 #include "php_php_tracer.h"
-
 #include <stdio.h>
+#include <string.h>
 #include <time.h>
+#include "slog.h"
 /* If you declare any globals in php_php_tracer.h uncomment this:
 ZEND_DECLARE_MODULE_GLOBALS(php_tracer)
 */
@@ -113,8 +114,8 @@ PHP_MINIT_FUNCTION(php_tracer)
 	/* If you have INI entries, uncomment these lines 
 	REGISTER_INI_ENTRIES();
 	*/
-
-	
+	slog_init("/home/sibylla/php/logs/php_tracer","/home/sibylla/php/slog.cfg",2,3,1);
+		
 #if PHP_VERSION_ID>=50500
 	old_execute_ex = zend_execute_ex;
 	zend_execute_ex = tracer_execute_ex;
@@ -167,7 +168,7 @@ PHP_RINIT_FUNCTION(php_tracer)
 
 
 	start = clock();
-	php_printf("-------------Request Start:  %d, loops: %d per sec\n<br/>",start,CLOCKS_PER_SEC);
+	slog(2,SLOG_INFO,"-------------Request Start:  %d, loops: %d per sec\n<br/>",start,CLOCKS_PER_SEC);
 	return SUCCESS;
 
 }
@@ -183,9 +184,9 @@ PHP_RSHUTDOWN_FUNCTION(php_tracer)
 
 
 	end = clock();
-	php_printf("--------------Request End:  %d,",end);
+	slog(2,SLOG_INFO,"--------------Request End:  %d,",end);
 	int interval = (end - start) ;
-	php_printf(" pass: %d, interval: %f\n<br/>",interval,interval/CLOCKS_PER_SEC);
+	slog(2,SLOG_INFO," pass: %d, interval: %f\n<br/>",interval,interval/CLOCKS_PER_SEC);
 
 	return SUCCESS;
 }
@@ -228,7 +229,7 @@ static void tracer_execute_ex(zend_execute_data *execute_data TSRMLS_DC)
 	// tm_start = localtime(&time_start);
 	// datetime = asctime(tm_start);
 
-	php_printf(">>>>>>>Execute start: %d  time: %s  \n<br/>",clock(),ctime(&time_start));
+	slog(2,SLOG_INFO,">>>>>>>Execute start: %d  time: %s  \n<br/>",clock(),ctime(&time_start));
 
 	op_array_traverse(execute_data->op_array);
 
@@ -238,7 +239,7 @@ static void tracer_execute_ex(zend_execute_data *execute_data TSRMLS_DC)
 	// fprintf(fp,"executed");
 	// fclose(fp);
 	old_execute_ex(execute_data TSRMLS_CC);
-	php_printf(">>>>>>>Execute end: %d\n<br/>",clock());
+	slog(2,SLOG_INFO,">>>>>>>Execute end: %d\n<br/>",clock());
 }
 
 static void op_array_traverse(zend_op_array *op_array) {
@@ -248,13 +249,13 @@ static void op_array_traverse(zend_op_array *op_array) {
 
 	int i;
 
-	php_printf("opcode count: %d\n<br/>",size);
+	slog(2,SLOG_INFO,"opcode count: %d\n<br/>",size);
 
 	zend_op *opcodes = op_array->opcodes;
 
 	for(i = 0; i <= size; i++) {
 
-		php_printf("%d: %d\n<br/>",i,opcodes[i].opcode);
+		slog(2,SLOG_INFO,"%d: %d\n<br/>",i,opcodes[i].opcode);
 			
 	}
 
@@ -266,17 +267,34 @@ static void tracer_execute_internal(zend_execute_data *execute_data_ptr, int ret
 
 
 	 clock_t start_internal = clock();
-	 php_printf(">>>>>>>Internal function start: %d\n<br/>",start_internal);
+	 slog(2,SLOG_INFO,">>>>>>>Internal function start: %d\n<br/>",start_internal);
+	 
+         zend_op_array *op_array = execute_data_ptr->op_array;
+         
+         if(op_array->function_name != NULL)
+		 slog(2,SLOG_INFO,"function name: %s",op_array->function_name);
+	 else {
 
-	 php_printf("execute_internal\n<br/>");
+		 slog(2,SLOG_INFO,"function name: NULL");
+	 }
+
+	 if(execute_data_ptr->function_state.function != NULL) {
+		 slog(2,SLOG_INFO,"function_state.function: NULL");
+	 }
+	 else {
+		 slog(2,SLOG_INFO,"function_state.function: NULL");
+
+	 }	 
+
+	 slog(2,SLOG_INFO,"execute_internal\n<br/>");
 	 //op_array_traverse(execute_data_ptr->op_array);
 
 	 old_execute_internal(execute_data_ptr,return_value_used TSRMLS_CC);
 
 	 clock_t end_internal = clock();
-	 php_printf(">>>>>>>Internal function end: %d, ",end_internal); 
+	 slog(2,SLOG_INFO,">>>>>>>Internal function end: %d, ",end_internal); 
 	 clock_t interval_internal = end_internal - start_internal;
-	 php_printf("pass: %d, interval: %f\n<br/>",interval_internal,interval_internal/CLOCKS_PER_SEC);
+	 slog(2,SLOG_INFO,"pass: %d, interval: %f\n<br/>",interval_internal,interval_internal/CLOCKS_PER_SEC);
 
 }
 

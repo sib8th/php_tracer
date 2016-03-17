@@ -28,8 +28,9 @@
 #include "php_php_tracer.h"
 #include <stdio.h>
 #include <string.h>
-#include <time.h>
+//#include <time.h>
 #include "slog.h"
+#include <stdlib.h>  
 /* If you declare any globals in php_php_tracer.h uncomment this:
 ZEND_DECLARE_MODULE_GLOBALS(php_tracer)
 */
@@ -79,6 +80,11 @@ PHP_INI_BEGIN()
     STD_PHP_INI_ENTRY("php_tracer.global_string", "foobar", PHP_INI_ALL, OnUpdateString, global_string, zend_php_tracer_globals, php_tracer_globals)
 PHP_INI_END()
 */
+
+PHP_INI_BEGIN()
+    STD_PHP_INI_ENTRY("php_tracer.module_start",      "0", PHP_INI_ALL, OnUpdateLong, module_start, zend_php_tracer_globals, php_tracer_globals)
+    STD_PHP_INI_ENTRY("php_tracer.module_end",     "0", PHP_INI_ALL, OnUpdateLong, module_end, zend_php_tracer_globals, php_tracer_globals)
+PHP_INI_END()
 /* }}} */
 
 /* {{{ php_php_tracer_init_globals
@@ -90,6 +96,11 @@ static void php_php_tracer_init_globals(zend_php_tracer_globals *php_tracer_glob
 	php_tracer_globals->global_string = NULL;
 }
 */
+static void php_php_tracer_init_globals(zend_php_tracer_globals *php_tracer_globals)
+{
+	php_tracer_globals->module_start = 0;
+	php_tracer_globals->module_end = 0;
+}
 /* }}} */
 
 /* {{{ PHP_MINIT_FUNCTION
@@ -106,16 +117,39 @@ static void tracer_execute(zend_op_array *op_array TSRMLS_DC);
 static void op_array_traverse(zend_op_array *op_array);
 static void (*old_execute_internal)(zend_execute_data *execute_data_ptr, int return_value_used TSRMLS_DC);
 static void tracer_execute_internal(zend_execute_data *execute_data_ptr, int return_value_used TSRMLS_DC);
+static void test_function(zend_execute_data *execute_data_ptr TSRMLS_DC);
 
 
-clock_t start,end;
+
+static clock_t request_start,request_end;
+static int function_level;
+
+
+
+
+
+
+
+
+
 PHP_MINIT_FUNCTION(php_tracer)
 {
-	/* If you have INI entries, uncomment these lines 
+	/* If you have INI entries, uncomment these lines */
 	REGISTER_INI_ENTRIES();
-	*/
-	slog_init("/home/sibylla/php/logs/php_tracer","/home/sibylla/php/slog.cfg",2,3,1);
-		
+	
+	// char log_path[100] = ""; 
+	// char cfg_path[100] = "";
+	// strcat(log_path,getenv("HOME"));
+	// strcat(cfg_path,getenv("HOME"));
+	//slog_init(strcat(log_path,"/php/logs/php_tracer"),strcat(cfg_path,"/php/slog.cfg"),2,3,1);
+
+
+	// PHP_TRACER_G(module_start) = clock();
+	// slog(2,SLOG_INFO,"-------------MODULE START-------------");
+
+
+	slog_init("/home/liangzx/php/logs/php_tracer","/home/liangzx/php/slog.cfg",2,3,1);
+
 #if PHP_VERSION_ID>=50500
 	old_execute_ex = zend_execute_ex;
 	zend_execute_ex = tracer_execute_ex;
@@ -140,7 +174,12 @@ PHP_MSHUTDOWN_FUNCTION(php_tracer)
 	UNREGISTER_INI_ENTRIES();
 	*/
 
+	// PHP_TRACER_G(module_end) = clock();
+
+	// int interval = (PHP_TRACER_G(module_end) - PHP_TRACER_G(module_start) ;
+	// slog(2,SLOG_INFO,"-------------MODULE END------------- pass: %d, interval: %f\n<br/>",interval,interval/CLOCKS_PER_SEC);
 	
+
 #if PHP_VERSION_ID>=50500
 	zend_execute_ex = old_execute_ex;
 #else
@@ -166,10 +205,11 @@ PHP_RINIT_FUNCTION(php_tracer)
 	zend_execute = tracer_execute;
 */
 
-
-	start = clock();
-	slog(2,SLOG_INFO,"-------------Request Start:  %d, loops: %d per sec\n<br/>",start,CLOCKS_PER_SEC);
+	request_start = clock();
+	slog(2,SLOG_INFO,"-------------Request Start-------------");
 	return SUCCESS;
+
+	function_level = 0;
 
 }
 /* }}} */
@@ -183,10 +223,11 @@ PHP_RSHUTDOWN_FUNCTION(php_tracer)
 	//zend_execute = old_execute;
 
 
-	end = clock();
-	slog(2,SLOG_INFO,"--------------Request End:  %d,",end);
-	int interval = (end - start) ;
-	slog(2,SLOG_INFO," pass: %d, interval: %f\n<br/>",interval,interval/CLOCKS_PER_SEC);
+	request_end = clock();
+	int request_interval = (request_end - request_start) ;
+
+	slog(2,SLOG_INFO,"-------------Request END------------- pass loops: %d, interval: %f\n<br/>",request_interval,request_interval/CLOCKS_PER_SEC);
+	
 
 	return SUCCESS;
 }
@@ -222,24 +263,51 @@ static void tracer_execute(zend_op_array *op_array TSRMLS_DC)
 static void tracer_execute_ex(zend_execute_data *execute_data TSRMLS_DC)
 {
 
-	time_t time_start;
+	//time_t execute_start;
 	// struct tm *tm_start;
 	// char *datetime;
-	// time(&time_start);
-	// tm_start = localtime(&time_start);
+	// time(&execute_start);
+	// tm_start = localtime(&execute_start);
 	// datetime = asctime(tm_start);
+	//slog(2,SLOG_INFO,">>>>>>>Execute start: %d  time: %s  \n<br/>",clock(),ctime(&execute_start));
 
-	slog(2,SLOG_INFO,">>>>>>>Execute start: %d  time: %s  \n<br/>",clock(),ctime(&time_start));
+	clock_t execute_start = clock();
+	slog(2,SLOG_INFO,"************Execute start**********<br/>");
 
-	op_array_traverse(execute_data->op_array);
+
+	//op_array_traverse(execute_data->op_array);
+	//test_function(execute_data TSRMLS_CC);
 
 
-	// File *fp;
-	// fp = fopen("php://output");
-	// fprintf(fp,"executed");
-	// fclose(fp);
-	old_execute_ex(execute_data TSRMLS_CC);
-	slog(2,SLOG_INFO,">>>>>>>Execute end: %d\n<br/>",clock());
+	if(execute_data->op_array!=NULL) {
+
+		if(execute_data->op_array->function_name == NULL) {
+			slog(2,SLOG_INFO,"######<%d> Global Entry", function_level);
+
+			old_execute_ex(execute_data TSRMLS_CC);
+
+			slog(2,SLOG_INFO,"######<%d> Global Exit", function_level);
+		}
+
+		else{
+			slog(2,SLOG_INFO,"######<%d> Enter Function: %s",++function_level,execute_data->op_array->function_name);
+
+			old_execute_ex(execute_data TSRMLS_CC);
+
+			slog(2,SLOG_INFO,"######<%d> Exit Function: %s",function_level--,execute_data->op_array->function_name);
+		}
+
+			
+
+	}
+
+	//old_execute_ex(execute_data TSRMLS_CC);
+
+
+	clock_t execute_end = clock();
+	clock_t execute_interval = execute_end - execute_start;
+	slog(2,SLOG_INFO,"************Execute end**********: pass loops: %d, interval: %f\n<br/>",execute_interval,execute_interval/CLOCKS_PER_SEC);
+	
 }
 
 static void op_array_traverse(zend_op_array *op_array) {
@@ -266,39 +334,137 @@ static void tracer_execute_internal(zend_execute_data *execute_data_ptr, int ret
 {
 
 
-	 clock_t start_internal = clock();
-	 slog(2,SLOG_INFO,">>>>>>>Internal function start: %d\n<br/>",start_internal);
+	clock_t internal_start = clock();
+	slog(2,SLOG_INFO,">>>>>>>Internal function start: %d\n<br/>",internal_start);
+	//php_printf(">>>>>>>Internal function start: %d\n<br/>",internal_start);
 	 
-         zend_op_array *op_array = execute_data_ptr->op_array;
-         
-         if(op_array->function_name != NULL)
-		 slog(2,SLOG_INFO,"function name: %s",op_array->function_name);
+    zend_op_array *op_array = execute_data_ptr->op_array;  
+
+
+    //test_function(execute_data_ptr TSRMLS_CC);
+	//op_array_traverse(execute_data_ptr->op_array);
+
+    char *outer_scope = "Global";
+    char *internal_name = "Empty";
+
+
+    if(execute_data_ptr->op_array!=NULL){
+
+    	
+    	if(execute_data_ptr->op_array->function_name !=NULL){
+
+    		outer_scope = execute_data_ptr->op_array->function_name;
+
+    	}
+
+
+    	if(execute_data_ptr->function_state.function != NULL) {
+
+			if(execute_data_ptr->function_state.function->common.function_name !=NULL) {
+
+
+				internal_name = execute_data_ptr->function_state.function->common.function_name;
+
+			   slog(2,SLOG_INFO,"######<%d> Enter Internal Function: %s, Outer Scope: %s",++function_level,internal_name,outer_scope);
+
+
+			}
+			else {
+				slog(2,SLOG_INFO,"Internal Function Name: %s",internal_name);	 	
+			}
+		}
+		else {
+
+		 	slog(2,SLOG_INFO,"Internal Function: %s",internal_name);
+
+		}			
+
+
+    	
+	}
+	old_execute_internal(execute_data_ptr,return_value_used TSRMLS_CC);
+
+
+	slog(2,SLOG_INFO,"######<%d> Exit Internal Function: %s, Outer Scope: %s",function_level--,internal_name,outer_scope);
+
+
+	clock_t internal_end = clock();
+	clock_t internal_interval = internal_end - internal_start;
+	slog(2,SLOG_INFO,">>>>>>>Internal function end<<<<<<<<<<: %d, pass: %d, interval: %f\n<br/>",internal_interval,internal_interval/CLOCKS_PER_SEC);
+	
+}
+
+static void test_function(zend_execute_data *execute_data_ptr TSRMLS_DC)
+{
+
+	zend_op_array *op_array = execute_data_ptr->op_array;  
+
+	  if(op_array->function_name != NULL){
+
+		 slog(2,SLOG_INFO,"op_array.function name: %s",op_array->function_name);
+
+	 }
 	 else {
 
-		 slog(2,SLOG_INFO,"function name: NULL");
+		 slog(2,SLOG_INFO,"op_array.function name: NULL");
 	 }
 
 	 if(execute_data_ptr->function_state.function != NULL) {
-		 slog(2,SLOG_INFO,"function_state.function: NULL");
+
+		 if(execute_data_ptr->function_state.function->common.function_name !=NULL) {
+
+ 			slog(2,SLOG_INFO,"execute_data.function_state.function.function name: %s, num_args : %d",execute_data_ptr->function_state.function->common.function_name,execute_data_ptr->function_state.function->common.num_args);
+		 }
+		 else {
+			slog(2,SLOG_INFO,"execute_data.function_state.function.function name: NULL");	 	
+		 }
 	 }
 	 else {
-		 slog(2,SLOG_INFO,"function_state.function: NULL");
+		 slog(2,SLOG_INFO,"execute_data.function_state.function: NULL");
 
 	 }	 
 
-	 slog(2,SLOG_INFO,"execute_internal\n<br/>");
-	 //op_array_traverse(execute_data_ptr->op_array);
 
-	 old_execute_internal(execute_data_ptr,return_value_used TSRMLS_CC);
 
-	 clock_t end_internal = clock();
-	 slog(2,SLOG_INFO,">>>>>>>Internal function end: %d, ",end_internal); 
-	 clock_t interval_internal = end_internal - start_internal;
-	 slog(2,SLOG_INFO,"pass: %d, interval: %f\n<br/>",interval_internal,interval_internal/CLOCKS_PER_SEC);
 
+	 // if(execute_data_ptr->call_slots != NULL) {
+
+		//  if(execute_data_ptr->call_slots->fbc != NULL) {
+
+		// 	 // if(execute_data_ptr->call_slots->fbc->common.function_name !=NULL) {
+
+	 // 		// 	slog(2,SLOG_INFO,"execute_data.fbc.common.function name: %s, num_args : %d",execute_data_ptr->call_slots->fbc->common.function_name,execute_data_ptr->call_slots->fbc->common.num_args);
+		// 	 // }
+		// 	 // else {
+		// 		// slog(2,SLOG_INFO,"execute_data.fbc.common.function name: NULL");	 	
+		// 	 // }
+		//  }
+		//  else {
+		// 	 slog(2,SLOG_INFO,"execute_data.fbc: NULL");
+
+		//  }	
+	 // }
+	 // else {
+	 // 	slog(2,SLOG_INFO,"execute_data.call_slots: NULL");
+	 // }
+
+
+
+	 if(execute_data_ptr->function_state.function != NULL) {
+
+		 if(execute_data_ptr->function_state.function->internal_function.function_name !=NULL) {
+
+ 			slog(2,SLOG_INFO,"execute_data.function_state.function.internal_function.function name: %s, num_args : %d",execute_data_ptr->function_state.function->internal_function.function_name,execute_data_ptr->function_state.function->internal_function.num_args);
+		 }
+		 else {
+			slog(2,SLOG_INFO,"execute_data.function_state.function.internal_function.function name: NULL");	 	
+		 }
+	 }
+	 else {
+		 slog(2,SLOG_INFO,"execute_data.function_state.function: NULL");
+
+	 }	
 }
-
-
 
 
 /* Remove the following function when you have succesfully modified config.m4

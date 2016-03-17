@@ -36,6 +36,8 @@ extern zend_module_entry php_tracer_module_entry;
 #include "TSRM.h"
 #endif
 
+#include <time.h>
+
 PHP_MINIT_FUNCTION(php_tracer);
 PHP_MSHUTDOWN_FUNCTION(php_tracer);
 PHP_RINIT_FUNCTION(php_tracer);
@@ -47,12 +49,16 @@ PHP_FUNCTION(confirm_php_tracer_compiled);	/* For testing, remove later. */
 /* 
   	Declare any global variables you may need between the BEGIN
 	and END macros here:     
+*/
+
 
 ZEND_BEGIN_MODULE_GLOBALS(php_tracer)
-	long  global_value;
-	char *global_string;
+
+	long module_start;
+  long module_end;
+
 ZEND_END_MODULE_GLOBALS(php_tracer)
-*/
+
 
 /* In every utility function you add that needs to use variables 
    in php_php_tracer_globals, call TSRMLS_FETCH(); after declaring other 
@@ -63,7 +69,6 @@ ZEND_END_MODULE_GLOBALS(php_tracer)
    encouraged to rename these macros something shorter, see
    examples in any other php module directory.
 */
-
 #ifdef ZTS
 #define PHP_TRACER_G(v) TSRMG(php_tracer_globals_id, zend_php_tracer_globals *, v)
 #else

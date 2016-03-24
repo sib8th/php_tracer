@@ -32,12 +32,18 @@ extern zend_module_entry php_tracer_module_entry;
 #	define PHP_PHP_TRACER_API
 #endif
 
+extern "C" {
 #ifdef ZTS
 #include "TSRM.h"
 #endif
 
 #include <time.h>
-
+#include <string.h>
+}
+#include <iostream>
+#include <string>
+#include <vector>
+using namespace std;
 PHP_MINIT_FUNCTION(php_tracer);
 PHP_MSHUTDOWN_FUNCTION(php_tracer);
 PHP_RINIT_FUNCTION(php_tracer);
@@ -50,14 +56,40 @@ PHP_FUNCTION(confirm_php_tracer_compiled);	/* For testing, remove later. */
   	Declare any global variables you may need between the BEGIN
 	and END macros here:     
 */
+typedef struct tracer_fcall{
+
+  clock_t start,end;
+  double interval;
+  string scope_name;
+  int type;
+} tracer_fcall;
+
+typedef struct tracer_fcall_entry{
+
+  tracer_fcall current_fcall;
+
+  tracer_fcall_entry * pre_fcall;
+
+  vector<tracer_fcall_entry *> fcall_list;
+
+}tracer_fcall_entry;
+
 
 
 ZEND_BEGIN_MODULE_GLOBALS(php_tracer)
 
 	long module_start;
   long module_end;
-
+  tracer_fcall_entry *fcalls;
 ZEND_END_MODULE_GLOBALS(php_tracer)
+
+
+#define NODE_ENTRY 0
+#define NODE_DB 1
+#define NODE_EXTERNAL 2
+#define NODE_USERDEF 3
+
+
 
 
 /* In every utility function you add that needs to use variables 
@@ -70,9 +102,9 @@ ZEND_END_MODULE_GLOBALS(php_tracer)
    examples in any other php module directory.
 */
 #ifdef ZTS
-#define PHP_TRACER_G(v) TSRMG(php_tracer_globals_id, zend_php_tracer_globals *, v)
+#define TRACER_G(v) TSRMG(php_tracer_globals_id, zend_php_tracer_globals *, v)
 #else
-#define PHP_TRACER_G(v) (php_tracer_globals.v)
+#define TRACER_G(v) (php_tracer_globals.v)
 #endif
 
 #endif	/* PHP_PHP_TRACER_H */

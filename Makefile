@@ -28,12 +28,12 @@ CFLAGS = -g -O2
 CFLAGS_CLEAN = $(CFLAGS)
 CPP = cc -E
 CPPFLAGS = -DHAVE_CONFIG_H
-CXX =
-CXXFLAGS =
+CXX = g++
+CXXFLAGS = -g -O2
 CXXFLAGS_CLEAN = $(CXXFLAGS)
 EXTENSION_DIR = /usr/lib/php5/20121212
 PHP_EXECUTABLE = /usr/bin/php
-EXTRA_LDFLAGS =
+EXTRA_LDFLAGS = -lstdc++
 EXTRA_LIBS =
 INCLUDES = -I/usr/include/php5 -I/usr/include/php5/main -I/usr/include/php5/TSRM -I/usr/include/php5/Zend -I/usr/include/php5/ext -I/usr/include/php5/ext/date/lib
 LFLAGS =
@@ -176,10 +176,10 @@ distclean: clean
 
 .PHONY: all clean install distclean test
 .NOEXPORT:
-php_tracer.lo: /home/liangzx/php-src/ext/php_tracer/php_tracer.c
-	$(LIBTOOL) --mode=compile $(CC)  -I. -I/home/liangzx/php-src/ext/php_tracer $(COMMON_FLAGS) $(CFLAGS_CLEAN) $(EXTRA_CFLAGS)  -c /home/liangzx/php-src/ext/php_tracer/php_tracer.c -o php_tracer.lo 
-slog.lo: /home/liangzx/php-src/ext/php_tracer/slog.c
-	$(LIBTOOL) --mode=compile $(CC)  -I. -I/home/liangzx/php-src/ext/php_tracer $(COMMON_FLAGS) $(CFLAGS_CLEAN) $(EXTRA_CFLAGS)  -c /home/liangzx/php-src/ext/php_tracer/slog.c -o slog.lo 
+php_tracer.lo: /home/liangzx/php-src/ext/php_tracer/php_tracer.cpp
+	$(LIBTOOL) --mode=compile $(CXX)  -I. -I/home/liangzx/php-src/ext/php_tracer $(COMMON_FLAGS) $(CXXFLAGS_CLEAN) $(EXTRA_CXXFLAGS)  -c /home/liangzx/php-src/ext/php_tracer/php_tracer.cpp -o php_tracer.lo 
+slog.lo: /home/liangzx/php-src/ext/php_tracer/slog.cpp
+	$(LIBTOOL) --mode=compile $(CXX)  -I. -I/home/liangzx/php-src/ext/php_tracer $(COMMON_FLAGS) $(CXXFLAGS_CLEAN) $(EXTRA_CXXFLAGS)  -c /home/liangzx/php-src/ext/php_tracer/slog.cpp -o slog.lo 
 $(phplibdir)/php_tracer.la: ./php_tracer.la
 	$(LIBTOOL) --mode=install cp ./php_tracer.la $(phplibdir)
 

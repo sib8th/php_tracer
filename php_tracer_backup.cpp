@@ -17,7 +17,7 @@
 */
 
 /* $Id$ */
-
+extern "C" {
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
@@ -25,15 +25,16 @@
 #include "php.h"
 #include "php_ini.h"
 #include "ext/standard/info.h"
-#include "php_php_tracer.h"
 #include <stdio.h>
 #include <string.h>
 //#include <time.h>
-#include "slog.h"
 #include <stdlib.h>  
-/* If you declare any globals in php_php_tracer.h uncomment this:
+}
+#include "slog.h"
+#include "php_php_tracer.h"
+/* If you declare any globals in php_php_tracer.h uncomment this:*/
 ZEND_DECLARE_MODULE_GLOBALS(php_tracer)
-*/
+
 
 /* True global resources - no need for thread safety here */
 static int le_php_tracer;
@@ -170,9 +171,9 @@ PHP_MINIT_FUNCTION(php_tracer)
  */
 PHP_MSHUTDOWN_FUNCTION(php_tracer)
 {
-	/* uncomment this line if you have INI entries
+	/* uncomment this line if you have INI entries*/
 	UNREGISTER_INI_ENTRIES();
-	*/
+	
 
 	// PHP_TRACER_G(module_end) = clock();
 
@@ -248,18 +249,8 @@ PHP_MINFO_FUNCTION(php_tracer)
 /* }}} */
 
 
-static void tracer_execute(zend_op_array *op_array TSRMLS_DC)
-{
-	 
-	op_array_traverse(op_array);
-	// File *fp;
-	// fp = fopen("php://output");
-	// fprintf(fp,"executed");
-	// fclose(fp);
-	old_execute(op_array TSRMLS_CC);
-	
-}
 
+#if PHP_VERSION_ID>=50500
 static void tracer_execute_ex(zend_execute_data *execute_data TSRMLS_DC)
 {
 
@@ -309,7 +300,19 @@ static void tracer_execute_ex(zend_execute_data *execute_data TSRMLS_DC)
 	slog(2,SLOG_INFO,"************Execute end**********: pass loops: %d, interval: %f\n<br/>",execute_interval,execute_interval/CLOCKS_PER_SEC);
 	
 }
-
+#else
+static void tracer_execute(zend_op_array *op_array TSRMLS_DC)
+{
+	 
+	op_array_traverse(op_array);
+	// File *fp;
+	// fp = fopen("php://output");
+	// fprintf(fp,"executed");
+	// fclose(fp);
+	old_execute(op_array TSRMLS_CC);
+	
+}
+#endif
 static void op_array_traverse(zend_op_array *op_array) {
 
 
@@ -344,8 +347,8 @@ static void tracer_execute_internal(zend_execute_data *execute_data_ptr, int ret
     //test_function(execute_data_ptr TSRMLS_CC);
 	//op_array_traverse(execute_data_ptr->op_array);
 
-    char *outer_scope = "Global";
-    char *internal_name = "Empty";
+    const char *outer_scope = "Global";
+    const char *internal_name = "Empty";
 
 
     if(execute_data_ptr->op_array!=NULL){

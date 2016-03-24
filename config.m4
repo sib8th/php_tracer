@@ -59,5 +59,10 @@ if test "$PHP_PHP_TRACER" != "no"; then
   dnl
   dnl PHP_SUBST(PHP_TRACER_SHARED_LIBADD)
 
-  PHP_NEW_EXTENSION(php_tracer, php_tracer.c slog.c, $ext_shared)
+  dnl PHP_NEW_EXTENSION(php_tracer, php_tracer.c slog.c, $ext_shared)
+  PHP_REQUIRE_CXX()
+  PHP_ADD_LIBRARY(stdc++,"",EXTRA_LDFLAGS)
+  CPPFILE="php_tracer.cpp slog.cpp"
+  PHP_NEW_EXTENSION(php_tracer, $CPPFILE,$ext_shared)    
+
 fi

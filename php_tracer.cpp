@@ -100,13 +100,12 @@ static void php_php_tracer_init_globals(zend_php_tracer_globals *php_tracer_glob
 	php_tracer_globals->global_string = NULL;
 }
 */
-#define TRACER_CREATE_FCALL() (tracer_fcall_entry *) malloc(sizeof(tracer_fcall_entry))
 
 static void php_php_tracer_init_globals(zend_php_tracer_globals *php_tracer_globals)
 {
 	php_tracer_globals->module_start = 0;
 	php_tracer_globals->module_end = 0;
-	php_tracer_globals->fcalls = TRACER_CREATE_FCALL();
+	php_tracer_globals->fcalls = NULL;
 	php_tracer_globals->current_fcall = NULL;
 }
 /* }}} */
@@ -127,7 +126,7 @@ static void (*old_execute_internal)(zend_execute_data *execute_data_ptr, zend_fc
 static void tracer_execute_internal(zend_execute_data *execute_data_ptr, zend_fcall_info *fci,int return_value_used TSRMLS_DC);
 static zend_op_array* (*old_compile_string)(zval *source_string, char *filename TSRMLS_DC);
 static zend_op_array* (*tracer_compile_string)(zval *source_string, char *filename TSRMLS_DC);
-static void iterative_print_trace(tracer_fcall_entry *entry);
+static void print_and_free_trace(tracer_fcall_entry *entry);
 
 
 
@@ -170,8 +169,8 @@ PHP_MINIT_FUNCTION(php_tracer)
 	// slog(2,SLOG_INFO,"-------------MODULE START-------------");
 
 	string home_prefix = string(getenv("HOME"));
-	slog_init((home_prefix + "/php/logs/php_tracer").c_str(),(home_prefix+"/php/slog.cfg").c_str(),2,3,1);
-	//slog_init("/home/liangzx/php/logs/php_tracer","/home/liangzx/php/slog.cfg",2,3,1);
+	//slog_init((home_prefix + "/php/logs/php_tracer").c_str(),(home_prefix+"/php/slog.cfg").c_str(),2,3,1);
+	slog_init("/home/liangzx/php/logs/php_tracer","/home/liangzx/php/slog.cfg",2,3,1);
 
 
 	return SUCCESS;
@@ -228,9 +227,15 @@ PHP_RINIT_FUNCTION(php_tracer)
 	old_execute_internal = zend_execute_internal;
 	zend_execute_internal = tracer_execute_internal;
 
-	TRACER_G(current_fcall) = TRACER_G(fcalls);
-	TRACER_G(fcalls)->pre_fcall = NULL;
-
+	//TRACER_G(fcalls) = TRACER_CREATE_FCALL();
+	TRACER_CREATE_FCALL(TRACER_G(fcalls));
+	if(TRACER_G(fcalls)) {
+		TRACER_G(current_fcall) = TRACER_G(fcalls);
+		TRACER_G(fcalls)->pre_fcall = NULL;
+	}
+	else {
+		slog(2,SLOG_ERROR,"not enough space for TRACER_G(fcalls)!");
+	}
 	function_level = 0;
 
 
@@ -243,18 +248,19 @@ PHP_RINIT_FUNCTION(php_tracer)
 }
 /* }}} */
 
-static void iterative_print_trace(tracer_fcall_entry *entry)
+static void print_and_free_trace(tracer_fcall_entry *entry)
 {
 
 	slog(2,SLOG_INFO,"start: %d, end: %d, interval: %f, scope_name: %s, type: %d",
-		entry->data.start,entry->data.end,entry->data.interval,(entry->data.scope_name).c_str(),entry->data.type);
+		entry->data.start,entry->data.end,entry->data.interval,entry->data.scope_name,entry->data.type);
 
 	if((entry->fcall_list).empty()) return;
 
 	vector<tracer_fcall_entry *>::iterator itr;
 	for(itr = entry->fcall_list.begin();itr!=entry->fcall_list.end();itr++)
 	{
-		iterative_print_trace(*itr);
+		print_and_free_trace(*itr);
+		//itr = entry->fcall_list.erase(itr);
 	}
 }
 
@@ -278,7 +284,11 @@ PHP_RSHUTDOWN_FUNCTION(php_tracer)
 
 	slog(2,SLOG_INFO,"-------------Request END------------- pass loops: %d, interval: %f\n<br/>",request_interval,request_interval/CLOCKS_PER_SEC);
 	
+	if(entry != NULL) {
 
+		print_and_free_trace(entry);
+		free(entry);
+	}
 
 
 /*#if PHP_VERSION_ID>=50500
@@ -336,13 +346,22 @@ static void tracer_execute_ex(zend_execute_data *execute_data TSRMLS_DC)
 	//test_function(execute_data TSRMLS_CC);
 
 
-	if(execute_data->op_array!=NULL) {
+	if(execute_data->op_array != NULL) {
 
 		if(execute_data->op_array->function_name == NULL) {
 
 			entry->data.start = execute_start;
 			entry->data.type = NODE_ENTRY;
-			entry->data.scope_name = string(execute_data->op_array->filename);
+			if(execute_data->op_array->filename != NULL) {
+
+				//entry->data.scope_name = string(execute_data->op_array->filename);
+				//strcpy(entry->data.scope_name,execute_data->op_array->filename);
+				TRACER_COPY_STRING(entry->data.scope_name,execute_data->op_array->filename);
+			}
+			else {
+				slog(2,SLOG_ERROR,"No filename");				
+			}
+			
 
 			slog(2,SLOG_INFO,"######<%d> Global Entry", function_level);
 
@@ -353,13 +372,20 @@ static void tracer_execute_ex(zend_execute_data *execute_data TSRMLS_DC)
 
 		else{
 
-			tracer_fcall_entry* new_fcall = TRACER_CREATE_FCALL();
+			//tracer_fcall_entry* new_fcall = TRACER_CREATE_FCALL();
+			tracer_fcall_entry* new_fcall = NULL;
+			TRACER_CREATE_FCALL(new_fcall);
+			if(new_fcall == NULL) {
+				slog(2,SLOG_ERROR,"not enough space for TRACER_G(new_fcall)!");
+			}
 			entry->fcall_list.push_back(new_fcall);
+			slog(2,SLOG_INFO,"execute fcall_list size:%d %s", (entry->fcall_list).size(),execute_data->op_array->function_name);
 			new_fcall->pre_fcall = entry;
 			TRACER_G(current_fcall) = new_fcall;
 			entry = new_fcall;
 			entry->data.type = NODE_USERDEF;
-			entry->data.scope_name = string(execute_data->op_array->function_name);
+			//entry->data.scope_name = string(execute_data->op_array->function_name);
+			TRACER_COPY_STRING(entry->data.scope_name,execute_data->op_array->function_name);
 			entry->data.start = execute_start;
 
 			
@@ -407,8 +433,26 @@ static void tracer_execute_internal(zend_execute_data *execute_data_ptr, zend_fc
 
 
 	tracer_fcall_entry *entry = TRACER_G(current_fcall);
-	tracer_fcall_entry* new_fcall = TRACER_CREATE_FCALL();
+	//tracer_fcall_entry *new_fcall = TRACER_CREATE_FCALL();
+	tracer_fcall_entry *new_fcall = NULL;
+	TRACER_CREATE_FCALL(new_fcall);
+	if(new_fcall == NULL) {
+		slog(2,SLOG_ERROR,"Not enough space for new_fcall");
+		return;
+	}
+	if(entry == NULL) {
+		slog(2,SLOG_ERROR,"current_fcall is NULL");
+		return;
+ 	}
 	entry->fcall_list.push_back(new_fcall);
+
+ 	if((entry->fcall_list).empty()) {
+ 		slog(2,SLOG_ERROR,"fcall_list is empty");
+		return;	
+ 	}
+ 	else {
+ 		slog(2,SLOG_INFO,"fcall_list size: %d",(entry->fcall_list).size());
+ 	}
 	new_fcall->pre_fcall = entry;
 	TRACER_G(current_fcall) = new_fcall;
 	entry = new_fcall;
@@ -447,7 +491,7 @@ static void tracer_execute_internal(zend_execute_data *execute_data_ptr, zend_fc
 				internal_name = execute_data_ptr->function_state.function->common.function_name;
 
 
-				if(strspn(execute_data->op_array->function_name,"mysql_") == 0) {
+				if(strspn(execute_data_ptr->op_array->function_name,"mysql_") == 0) {
 
 					entry->data.type = NODE_DB;
 					
@@ -455,7 +499,8 @@ static void tracer_execute_internal(zend_execute_data *execute_data_ptr, zend_fc
 				else {
 					entry->data.type = NODE_EXTERNAL;
 				}
-				entry->data.scope_name = string(internal_name);
+				//entry->data.scope_name = string(internal_name);
+				TRACER_COPY_STRING(entry->data.scope_name,internal_name);
 
 			   slog(2,SLOG_INFO,"######<%d> Enter Internal Function: %s, Outer Scope: %s",++function_level,internal_name,outer_scope);
 
@@ -478,7 +523,9 @@ static void tracer_execute_internal(zend_execute_data *execute_data_ptr, zend_fc
 
 	entry->data.end = clock();
 	entry->data.interval = (double) ((entry->data.end - entry->data.start) / CLOCKS_PER_SEC);
-	TRACER_G(current_fcall) = entry->pre_fcall;
+
+	if(entry->pre_fcall != NULL)
+		TRACER_G(current_fcall) = entry->pre_fcall;
 
 	slog(2,SLOG_INFO,"######<%d> Exit Internal Function: %s, Outer Scope: %s",function_level--,internal_name,outer_scope);
 

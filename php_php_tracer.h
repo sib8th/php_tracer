@@ -50,23 +50,18 @@ PHP_RINIT_FUNCTION(php_tracer);
 PHP_RSHUTDOWN_FUNCTION(php_tracer);
 PHP_MINFO_FUNCTION(php_tracer);
 
-PHP_FUNCTION(confirm_php_tracer_compiled);	/* For testing, remove later. */
-
-/* 
-  	Declare any global variables you may need between the BEGIN
-	and END macros here:     
-*/
 typedef struct tracer_fcall{
 
   clock_t start,end;
   double interval;
-  string scope_name;
+  char *scope_name;
+  //string scope_name;
   int type;
 } tracer_fcall;
 
 typedef struct tracer_fcall_entry{
 
-  tracer_fcall current_fcall;
+  tracer_fcall data;
 
   tracer_fcall_entry * pre_fcall;
 
@@ -74,21 +69,30 @@ typedef struct tracer_fcall_entry{
 
 }tracer_fcall_entry;
 
-
+#define NODE_ENTRY 0
+#define NODE_DB 1
+#define NODE_EXTERNAL 2
+#define NODE_USERDEF 3
+#define TRACER_CREATE_FCALL(name)  \
+do {\
+name = (tracer_fcall_entry *) malloc(sizeof(tracer_fcall_entry)); \
+name->data.scope_name = (char *)malloc(100*sizeof(char)); \
+} while(0)
+#define TRACER_COPY_STRING(dst,src)  \
+strcpy(dst,src)
+/* 
+  	Declare any global variables you may need between the BEGIN
+	and END macros here:     
+*/
 
 ZEND_BEGIN_MODULE_GLOBALS(php_tracer)
 
 	long module_start;
   long module_end;
   tracer_fcall_entry *fcalls;
+  tracer_fcall_entry *current_fcall;
+
 ZEND_END_MODULE_GLOBALS(php_tracer)
-
-
-#define NODE_ENTRY 0
-#define NODE_DB 1
-#define NODE_EXTERNAL 2
-#define NODE_USERDEF 3
-
 
 
 

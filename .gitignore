@@ -3,3 +3,4 @@
 .libs
 *.cache
 modules
+*_backup*

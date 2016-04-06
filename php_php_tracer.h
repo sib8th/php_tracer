@@ -39,6 +39,10 @@ extern "C" {
 
 #include <time.h>
 #include <string.h>
+#include <glib.h>
+#include <stdio.h>
+#include <stdlib.h>  
+#include "php_globals.h"
 }
 #include <iostream>
 #include <string>
@@ -50,12 +54,29 @@ PHP_RINIT_FUNCTION(php_tracer);
 PHP_RSHUTDOWN_FUNCTION(php_tracer);
 PHP_MINFO_FUNCTION(php_tracer);
 
+void obtain_request_info();
+const char* get_node_type(int type);
+const char* get_event_type(int i);
+const char* get_error_name(int type);
+
+
+typedef struct tracer_event{
+
+  uint lineno;
+  char *msg;
+  int type;
+  int event_type;
+  clock_t ts;
+
+}tracer_event;
+
 typedef struct tracer_fcall{
 
   clock_t start,end;
   double interval;
   char *scope_name;
   //string scope_name;
+  uint lineno;
   int type;
 } tracer_fcall;
 
@@ -65,25 +86,22 @@ typedef struct tracer_fcall_entry{
 
   tracer_fcall_entry * pre_fcall;
 
-  vector<tracer_fcall_entry *> fcall_list;
+  GSList * fcall_list;
+  GSList * event_list;
 
 }tracer_fcall_entry;
 
-#define NODE_ENTRY 0
-#define NODE_DB 1
-#define NODE_EXTERNAL 2
-#define NODE_USERDEF 3
-#define TRACER_CREATE_FCALL(name)  \
-do {\
-name = (tracer_fcall_entry *) malloc(sizeof(tracer_fcall_entry)); \
-name->data.scope_name = (char *)malloc(100*sizeof(char)); \
-} while(0)
-#define TRACER_COPY_STRING(dst,src)  \
-strcpy(dst,src)
-/* 
-  	Declare any global variables you may need between the BEGIN
-	and END macros here:     
-*/
+typedef struct tracer_request_info{
+   char *host;
+   char *ip;
+   char *uri;
+   char *script_name;
+   long ts;
+   char *method;
+}tracer_request_info;
+
+
+
 
 ZEND_BEGIN_MODULE_GLOBALS(php_tracer)
 
@@ -91,6 +109,7 @@ ZEND_BEGIN_MODULE_GLOBALS(php_tracer)
   long module_end;
   tracer_fcall_entry *fcalls;
   tracer_fcall_entry *current_fcall;
+  tracer_request_info request_info;
 
 ZEND_END_MODULE_GLOBALS(php_tracer)
 
@@ -110,6 +129,65 @@ ZEND_END_MODULE_GLOBALS(php_tracer)
 #else
 #define TRACER_G(v) (php_tracer_globals.v)
 #endif
+
+
+#define NODE_ENTRY 0
+#define NODE_DB 1
+#define NODE_EXTERNAL 2
+#define NODE_USERDEF 3
+#define NODE_TYPE(index)  get_node_type(index)
+#define TRACER_CREATE_FCALL(name)  \
+do {\
+name = (tracer_fcall_entry *) malloc(sizeof(tracer_fcall_entry)); \
+name->data.scope_name = (char *)malloc(100*sizeof(char)); \
+name->data.type = 0; \
+name->pre_fcall = NULL; \
+name->fcall_list = NULL; \
+name->event_list = NULL; \
+} while(0)
+
+# define zend_is_auto_global_str(name) (zend_is_auto_global(ZEND_STRL((name)) TSRMLS_CC))
+#define TRACER_ERROR 0
+#define TRACER_EXCEPTION 1
+#define EVENT_TYPE(index)  get_event_type(index)
+#define ERROR_NAME(index) get_error_name(index)
+#define TRACER_CREATE_EVENT(name)  \
+do {\
+name = (tracer_event *) malloc(sizeof(tracer_event)); \
+name->msg = (char *)malloc(500*sizeof(char)); \
+name->type = TRACER_ERROR; \
+name->lineno = 0; \
+} while(0)
+
+#define TRACER_RI(element) \
+(TRACER_G(request_info).element)
+
+#define TRACER_INIT_REQUEST(name) \
+  //name = (tracer_request_info *) malloc(sizeof(tracer_request_info)); \
+  name.host = (char *)malloc(200*sizeof(char)); \
+  name.ip = (char *)malloc(100*sizeof(char)); \
+  name.url = (char *)malloc(500*sizeof(char)); \
+  name.method = (char *)malloc(50*sizeof(char)); \
+  name.script_name = (char *)malloc(500*sizeof(char)); \
+
+
+
+#define SET_REQUEST_INFO(name, dest, type) \
+  zend_hash_find(Z_ARRVAL_P(tmp), name, sizeof(name), (void**)&TRACER_RI(dest))
+
+#define FETCH_HTTP_GLOBALS(name) (tmp = PG(http_globals)[TRACK_VARS_##name])
+
+
+
+
+#define TRACER_COPY_STRING(dst,src)  \
+strcpy(dst,src)
+#define TRACER_ADD_TO_LIST(list,object) \
+do { \
+list = g_slist_append(list,object); \
+} while(0)
+
+
 
 #endif	/* PHP_PHP_TRACER_H */
 

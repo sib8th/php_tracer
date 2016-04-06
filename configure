@@ -4033,6 +4033,156 @@ if test "$PHP_PHP_TRACER" != "no"; then
 
 
 
+LIBOTHER_LIBNAME="glib-2.0"
+
+  if test "`pkg-config --cflags --libs glib-2.0`" != "/usr/include"; then
+
+  if test -z "`pkg-config --cflags --libs glib-2.0`" || echo "`pkg-config --cflags --libs glib-2.0`" | grep '^/' >/dev/null ; then
+    ai_p=`pkg-config --cflags --libs glib-2.0`
+  else
+
+    ep_dir=`echo `pkg-config --cflags --libs glib-2.0`|$SED 's%/*[^/][^/]*/*$%%'`
+
+    ep_realdir=`(cd "$ep_dir" && pwd)`
+    ai_p="$ep_realdir"/`basename "`pkg-config --cflags --libs glib-2.0`"`
+  fi
+
+
+
+  unique=`echo $ai_p|$SED 's/[^a-zA-Z0-9]/_/g'`
+
+  cmd="echo $ac_n \"\$INCLUDEPATH$unique$ac_c\""
+  if test -n "$unique" && test "`eval $cmd`" = "" ; then
+    eval "INCLUDEPATH$unique=set"
+
+      if test ""; then
+        INCLUDES="-I$ai_p $INCLUDES"
+      else
+        INCLUDES="$INCLUDES -I$ai_p"
+      fi
+
+  fi
+
+  fi
+
+
+  for ac_i in `pkg-config --cflags glib-2.0`; do
+    case $ac_i in
+    -pthread)
+      if test "$ext_shared" = "yes"; then
+        PHP_TRACER_SHARED_LIBADD="$PHP_TRACER_SHARED_LIBADD -pthread"
+      else
+
+
+  unique=`echo $ac_i|$SED 's/[^a-zA-Z0-9]/_/g'`
+
+  cmd="echo $ac_n \"\$EXTRA_LDFLAGS$unique$ac_c\""
+  if test -n "$unique" && test "`eval $cmd`" = "" ; then
+    eval "EXTRA_LDFLAGS$unique=set"
+    EXTRA_LDFLAGS="$EXTRA_LDFLAGS $ac_i"
+  fi
+
+      fi
+    ;;
+    -l*)
+      ac_ii=`echo $ac_i|cut -c 3-`
+
+
+  case $ac_ii in
+  c|c_r|pthread*) ;;
+  *)
+    if test "$ext_shared" = "yes"; then
+        PHP_TRACER_SHARED_LIBADD="$PHP_TRACER_SHARED_LIBADD -l$ac_ii"
+    else
+
+
+  case $ac_ii in
+  c|c_r|pthread*) ;;
+  *)
+      LIBS="$LIBS -l$ac_ii"
+   ;;
+  esac
+
+
+    fi
+   ;;
+  esac
+
+
+    ;;
+    -L*)
+      ac_ii=`echo $ac_i|cut -c 3-`
+
+  if test "$ac_ii" != "/usr/$PHP_LIBDIR" && test "$ac_ii" != "/usr/lib"; then
+
+  if test -z "$ac_ii" || echo "$ac_ii" | grep '^/' >/dev/null ; then
+    ai_p=$ac_ii
+  else
+
+    ep_dir=`echo $ac_ii|$SED 's%/*[^/][^/]*/*$%%'`
+
+    ep_realdir=`(cd "$ep_dir" && pwd)`
+    ai_p="$ep_realdir"/`basename "$ac_ii"`
+  fi
+
+
+      if test "$ext_shared" = "yes"; then
+        PHP_TRACER_SHARED_LIBADD="-L$ai_p $PHP_TRACER_SHARED_LIBADD"
+        test "x$PHP_RPATH" != "xno" && \
+        test -n "$ld_runpath_switch" && PHP_TRACER_SHARED_LIBADD="$ld_runpath_switch$ai_p $PHP_TRACER_SHARED_LIBADD"
+      else
+
+
+
+  unique=`echo $ai_p|$SED 's/[^a-zA-Z0-9]/_/g'`
+
+  cmd="echo $ac_n \"\$LIBPATH$unique$ac_c\""
+  if test -n "$unique" && test "`eval $cmd`" = "" ; then
+    eval "LIBPATH$unique=set"
+
+    test "x$PHP_RPATH" != "xno" &&
+    test -n "$ld_runpath_switch" && LDFLAGS="$LDFLAGS $ld_runpath_switch$ai_p"
+    LDFLAGS="$LDFLAGS -L$ai_p"
+    PHP_RPATHS="$PHP_RPATHS $ai_p"
+
+  fi
+
+
+      fi
+
+  fi
+
+    ;;
+    esac
+  done
+
+
+
+  case $LIBOTHER_LIBNAME in
+  c|c_r|pthread*) ;;
+  *)
+    if test "$ext_shared" = "yes"; then
+        PHP_TRACER_SHARED_LIBADD="$PHP_TRACER_SHARED_LIBADD -l$LIBOTHER_LIBNAME"
+    else
+
+
+  case $LIBOTHER_LIBNAME in
+  c|c_r|pthread*) ;;
+  *)
+      LIBS="$LIBS -l$LIBOTHER_LIBNAME"
+   ;;
+  esac
+
+
+    fi
+   ;;
+  esac
+
+
+
+  PHP_VAR_SUBST="$PHP_VAR_SUBST PHP_TRACER_SHARED_LIBADD"
+
+
   if test -z "$php_cxx_done"; then
     ac_ext=cpp
 ac_cpp='$CXXCPP $CPPFLAGS'

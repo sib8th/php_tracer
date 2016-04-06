@@ -60,6 +60,20 @@ if test "$PHP_PHP_TRACER" != "no"; then
   dnl PHP_SUBST(PHP_TRACER_SHARED_LIBADD)
 
   dnl PHP_NEW_EXTENSION(php_tracer, php_tracer.c slog.c, $ext_shared)
+
+LIBOTHER_LIBNAME="glib-2.0"
+dnl  LIBSYMBOL="glib-2.0"
+dnl  LIBOTHER_LIBS="`pkg-config --cflags --libs glib-2.0`"
+dnl  LIBOTHER_INCDIRS="`pkg-config --cflags glib-2.0`"
+dnl  PHP_CHECK_LIBRARY($LIBOTHER_LIBNAME,$LIBSYMBOL,
+dnl  [
+dnl	  PHP_EVAL_INCLUDE(`pkg-config --cflags glib-2.0`)
+          PHP_ADD_INCLUDE(`pkg-config --cflags --libs glib-2.0`)
+	  PHP_EVAL_LIBLINE(`pkg-config --cflags glib-2.0`,PHP_TRACER_SHARED_LIBADD)
+	  PHP_ADD_LIBRARY($LIBOTHER_LIBNAME,1,PHP_TRACER_SHARED_LIBADD)
+	  PHP_SUBST(PHP_TRACER_SHARED_LIBADD)
+dnl  ],[AC_MSG_ERROR([wrong lib$LIBNAME version or library not found])
+dnl  ])
   PHP_REQUIRE_CXX()
   PHP_ADD_LIBRARY(stdc++,"",EXTRA_LDFLAGS)
   CPPFILE="php_tracer.cpp slog.cpp"

@@ -43,6 +43,7 @@ extern "C" {
 #include <stdio.h>
 #include <stdlib.h>  
 #include "php_globals.h"
+
 }
 #include <iostream>
 #include <string>
@@ -55,6 +56,7 @@ PHP_RSHUTDOWN_FUNCTION(php_tracer);
 PHP_MINFO_FUNCTION(php_tracer);
 
 void obtain_request_info();
+
 const char* get_node_type(int type);
 const char* get_event_type(int i);
 const char* get_error_name(int type);
@@ -78,6 +80,11 @@ typedef struct tracer_fcall{
   //string scope_name;
   uint lineno;
   int type;
+  char **arguments;
+  char **parameters;
+  ulong arg_count;
+  ulong param_count;
+  
 } tracer_fcall;
 
 typedef struct tracer_fcall_entry{
@@ -92,12 +99,13 @@ typedef struct tracer_fcall_entry{
 }tracer_fcall_entry;
 
 typedef struct tracer_request_info{
-   char *host;
-   char *ip;
-   char *uri;
-   char *script_name;
-   long ts;
-   char *method;
+   zval **host;
+   zval **ip;
+   zval **uri;
+   zval **script_name;
+   zval **ts;
+   zval **method;
+   zend_bool is_set;
 }tracer_request_info;
 
 
@@ -138,13 +146,16 @@ ZEND_END_MODULE_GLOBALS(php_tracer)
 #define NODE_TYPE(index)  get_node_type(index)
 #define TRACER_CREATE_FCALL(name)  \
 do {\
-name = (tracer_fcall_entry *) malloc(sizeof(tracer_fcall_entry)); \
-name->data.scope_name = (char *)malloc(100*sizeof(char)); \
+name = (tracer_fcall_entry *) emalloc(sizeof(tracer_fcall_entry)); \
+name->data.scope_name = (char *)emalloc(100*sizeof(char)); \
 name->data.type = 0; \
 name->pre_fcall = NULL; \
 name->fcall_list = NULL; \
 name->event_list = NULL; \
 } while(0)
+
+ 
+
 
 # define zend_is_auto_global_str(name) (zend_is_auto_global(ZEND_STRL((name)) TSRMLS_CC))
 #define TRACER_ERROR 0
@@ -153,24 +164,27 @@ name->event_list = NULL; \
 #define ERROR_NAME(index) get_error_name(index)
 #define TRACER_CREATE_EVENT(name)  \
 do {\
-name = (tracer_event *) malloc(sizeof(tracer_event)); \
-name->msg = (char *)malloc(500*sizeof(char)); \
+name = (tracer_event *) emalloc(sizeof(tracer_event)); \
+name->msg = (char *)emalloc(500*sizeof(char)); \
 name->type = TRACER_ERROR; \
 name->lineno = 0; \
 } while(0)
 
-#define TRACER_RI(element) \
-(TRACER_G(request_info).element)
+#define TRACER_RI(element) (TRACER_G(request_info).element)
+
+#define TRACER_RI_STRVAL(var)  Z_STRVAL_PP(TRACER_RI(var))
+
+#define TRACER_RI_LVAL(var)  Z_LVAL_PP(TRACER_RI(var))
 
 #define TRACER_INIT_REQUEST(name) \
   //name = (tracer_request_info *) malloc(sizeof(tracer_request_info)); \
-  name.host = (char *)malloc(200*sizeof(char)); \
-  name.ip = (char *)malloc(100*sizeof(char)); \
-  name.url = (char *)malloc(500*sizeof(char)); \
-  name.method = (char *)malloc(50*sizeof(char)); \
-  name.script_name = (char *)malloc(500*sizeof(char)); \
+  name.host = (char *)emalloc(200*sizeof(char)); \
+  name.ip = (char *)emalloc(100*sizeof(char)); \
+  name.url = (char *)emalloc(500*sizeof(char)); \
+  name.method = (char *)emalloc(50*sizeof(char)); \
+  name.script_name = (char *)emalloc(500*sizeof(char)); \
 
-
+#define TRACER_FD(fcall) ((fcall)->data)
 
 #define SET_REQUEST_INFO(name, dest, type) \
   zend_hash_find(Z_ARRVAL_P(tmp), name, sizeof(name), (void**)&TRACER_RI(dest))

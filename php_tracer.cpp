@@ -228,12 +228,12 @@ PHP_RSHUTDOWN_FUNCTION(php_tracer)
 {
 	/*print trace iteratively*/
 	slog(2,SLOG_INFO,"----------------------TRACE-----------------------");
-	tracer_fcall_entry *entry =  TRACER_G(fcalls);
-	if(entry != NULL) {
+	// tracer_fcall_entry *entry =  TRACER_G(fcalls);
+	// if(entry != NULL) {
 
-		print_and_free_trace(entry,1);
-	}
-	print_request_data();
+	// 	print_and_free_trace(entry,1);
+	// }
+	// print_request_data();
 
 
 /*#if PHP_VERSION_ID>=50500
@@ -290,7 +290,7 @@ bool load_parameters(tracer_fcall_entry* entry,zend_execute_data *execute_data,b
 		return false;
 	}
 
-	TRACER_FD(entry).param_count = arg_info->name_len;
+	TRACER_FD(entry).param_count = execute_data->function_state.function->common.required_num_args;
 	int len = TRACER_FD(entry).param_count;
 
 	TRACER_FD(entry).parameters = (char**)emalloc(sizeof(char *)*len);
@@ -395,7 +395,7 @@ static void tracer_execute_ex(zend_execute_data *execute_data TSRMLS_DC)
 				entry->data.lineno = execute_data->prev_execute_data->opline->lineno;
 			
 			 	load_parameters(entry,execute_data,false);
-			 	load_arguments(entry,execute_data);
+			 	//load_arguments(entry,execute_data);
 			 	// for(int i = 0; i < TRACER_FD(entry).param_count; i++) {
 			 	// 	slog(1,SLOG_INFO,"param%d %s",i,TRACER_FD(entry).parameters[i]);
 			 	// }
@@ -422,6 +422,7 @@ static void tracer_execute_ex(zend_execute_data *execute_data TSRMLS_DC)
 	slog(2,SLOG_INFO,"************Execute End**********");
 
 }
+
 
 /*
 #else
@@ -476,9 +477,9 @@ static void tracer_execute_internal(zend_execute_data *execute_data_ptr, zend_fc
 						slog(1,SLOG_INFO,"%s",internal_name);
 
 						new_fcall->data.type = NODE_DB;
-						if(strcmp(internal_name,"mysql_query") == 0) {										
-							slog(1,SLOG_INFO,"mysql_query: %s",execute_data_ptr->function_state.function->common.arg_info->name);
-						}
+						// if(strcmp(internal_name,"mysql_query") == 0) {										
+						// 	slog(1,SLOG_INFO,"mysql_query: %s",execute_data_ptr->function_state.function->common.arg_info->name);
+						// }
 					}
 					/*Other external function*/
 					else {
@@ -640,7 +641,21 @@ static void print_and_free_trace(tracer_fcall_entry *entry,int level)
 	}
 	blank_char += ">";
 	//const char * arg = convert_arguments(TRACER_FD(entry).arg_count,TRACER_FD(entry).arguments);
-	slog(1,SLOG_INFO,"%s%s(%d--%d, loops: %d,interval: %f, %s, line %d),arguments(%d):%s, parameter(%d):%s ",
+	// slog(1,SLOG_INFO,"%s%s(%d--%d, loops: %d,interval: %f, %s, line %d),arguments(%d):%s, parameter(%d):%s ",
+	// 	blank_char.c_str(),
+	// 	entry->data.scope_name,
+	// 	entry->data.start,
+	// 	entry->data.end,
+	// 	entry->data.end - entry->data.start,
+	// 	entry->data.interval,
+	// 	NODE_TYPE(entry->data.type),
+	// 	entry->data.lineno,
+	// 	TRACER_FD(entry).arg_count,
+	// 	convert_arguments(TRACER_FD(entry).arg_count,TRACER_FD(entry).arguments),
+	// 	TRACER_FD(entry).param_count,
+	// 	convert_arguments(TRACER_FD(entry).param_count,TRACER_FD(entry).parameters));
+	
+	slog(1,SLOG_INFO,"%s%s(%d--%d, loops: %d,interval: %f, %s, line %d)",
 		blank_char.c_str(),
 		entry->data.scope_name,
 		entry->data.start,
@@ -648,11 +663,7 @@ static void print_and_free_trace(tracer_fcall_entry *entry,int level)
 		entry->data.end - entry->data.start,
 		entry->data.interval,
 		NODE_TYPE(entry->data.type),
-		entry->data.lineno,
-		TRACER_FD(entry).arg_count,
-		convert_arguments(TRACER_FD(entry).arg_count,TRACER_FD(entry).arguments),
-		TRACER_FD(entry).param_count,
-		convert_arguments(TRACER_FD(entry).param_count,TRACER_FD(entry).parameters));
+		entry->data.lineno);
 	
 	
 	

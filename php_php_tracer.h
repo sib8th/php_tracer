@@ -149,6 +149,8 @@ do {\
 name = (tracer_fcall_entry *) emalloc(sizeof(tracer_fcall_entry)); \
 name->data.scope_name = (char *)emalloc(100*sizeof(char)); \
 name->data.type = 0; \
+name->data.arguments = NULL; \
+name->data.parameters = NULL; \
 name->pre_fcall = NULL; \
 name->fcall_list = NULL; \
 name->event_list = NULL; \

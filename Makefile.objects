@@ -1,7 +1,7 @@
-php_tracer.lo: /home/liangzx/php-src/ext/php_tracer/php_tracer.cpp
-	$(LIBTOOL) --mode=compile $(CXX)  -I. -I/home/liangzx/php-src/ext/php_tracer $(COMMON_FLAGS) $(CXXFLAGS_CLEAN) $(EXTRA_CXXFLAGS)  -c /home/liangzx/php-src/ext/php_tracer/php_tracer.cpp -o php_tracer.lo 
-slog.lo: /home/liangzx/php-src/ext/php_tracer/slog.cpp
-	$(LIBTOOL) --mode=compile $(CXX)  -I. -I/home/liangzx/php-src/ext/php_tracer $(COMMON_FLAGS) $(CXXFLAGS_CLEAN) $(EXTRA_CXXFLAGS)  -c /home/liangzx/php-src/ext/php_tracer/slog.cpp -o slog.lo 
+php_tracer.lo: /home/sibylla/php/php-src/ext/php_tracer/php_tracer.cpp
+	$(LIBTOOL) --mode=compile $(CXX)  -I. -I/home/sibylla/php/php-src/ext/php_tracer $(COMMON_FLAGS) $(CXXFLAGS_CLEAN) $(EXTRA_CXXFLAGS)  -c /home/sibylla/php/php-src/ext/php_tracer/php_tracer.cpp -o php_tracer.lo 
+slog.lo: /home/sibylla/php/php-src/ext/php_tracer/slog.cpp
+	$(LIBTOOL) --mode=compile $(CXX)  -I. -I/home/sibylla/php/php-src/ext/php_tracer $(COMMON_FLAGS) $(CXXFLAGS_CLEAN) $(EXTRA_CXXFLAGS)  -c /home/sibylla/php/php-src/ext/php_tracer/slog.cpp -o slog.lo 
 $(phplibdir)/php_tracer.la: ./php_tracer.la
 	$(LIBTOOL) --mode=install cp ./php_tracer.la $(phplibdir)
 

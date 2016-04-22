@@ -17,7 +17,7 @@
 */
 
 /* $Id$ */
-extern "C" {
+//extern "C" {
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
@@ -26,7 +26,9 @@ extern "C" {
 #include "ext/standard/info.h"
 #include "zend_errors.h"
 #include "zend_exceptions.h"
-}
+#include "ext/standard/php_smart_str.h"	
+#include "ext/standard/php_string.h"	
+//}
 #include "slog.h"
 #include "php_php_tracer.h"
 /* If you declare any globals in php_php_tracer.h uncomment this:*/
@@ -117,9 +119,11 @@ static void (*old_error_cb)(int type, const char *error_filename, const uint err
 static void tracer_error_cb(int type, const char *error_filename, const uint error_lineno, const char *format, va_list args);
 static void (*old_throw_exception_hook)(zval *ex TSRMLS_DC);
 static void tracer_throw_exception_hook(zval *ex TSRMLS_DC);
+static void tracer_event_handler(int event_type,int type,uint lineno,char *msg);
+
 static void print_and_free_trace(tracer_fcall_entry *entry, int level);
 static void print_request_data();
-static void tracer_event_handler(int event_type,int type,uint lineno,char *msg);
+
 
 
 
@@ -148,9 +152,7 @@ PHP_MINIT_FUNCTION(php_tracer)
 	/*Init Log*/
 	//string home_prefix = string(getenv("HOME"));
 	//slog_init((home_prefix + "/php/logs/php_tracer").c_str(),(home_prefix+"/php/slog.cfg").c_str(),2,3,1);
-	slog_init("/home/sibylla/php/logs/php_tracer","/home/sibylla/php/slog.cfg",2,3,1);
-
-
+	parse_data();
 	return SUCCESS;
 }
 /* }}} */
@@ -175,7 +177,11 @@ PHP_RINIT_FUNCTION(php_tracer)
 	old_execute = zend_execute;
 	zend_execute = tracer_execute;
 */
+	
+
+	slog_init("/home/liangzx/php/logs/php_tracer","/home/liangzx/php/slog.cfg",2,3,1);
 	slog(2,SLOG_INFO,"-------------Request Start-------------");
+	//php_printf("Request Start</br>");
 
 	obtain_request_info();
 
@@ -227,12 +233,16 @@ PHP_RINIT_FUNCTION(php_tracer)
 PHP_RSHUTDOWN_FUNCTION(php_tracer)
 {
 	/*print trace iteratively*/
+	
 	slog(2,SLOG_INFO,"----------------------TRACE-----------------------");
+	/*
 	 tracer_fcall_entry *entry =  TRACER_G(fcalls);
 	 if(entry != NULL) {
-
+	 	 
 	 	print_and_free_trace(entry,1);
 	 }
+	 */
+	 
 	// print_request_data();
 
 
@@ -250,6 +260,7 @@ PHP_RSHUTDOWN_FUNCTION(php_tracer)
 
 	zend_throw_exception_hook = old_throw_exception_hook;
 
+	//php_printf("Request End");
 	slog(2,SLOG_INFO,"-------------Request End-------------");
 
 	return SUCCESS;
@@ -275,79 +286,6 @@ PHP_MINFO_FUNCTION(php_tracer)
 #if PHP_VERSION_ID>=50500
 */
 
-bool load_parameters(tracer_fcall_entry* entry,zend_execute_data *execute_data) {
-
-	slog(1,SLOG_INFO,"LOAD PARAMETERS");
-	
-	zend_arg_info* arg_info = NULL;
-	
-	if(execute_data->function_state.function == NULL) {
-		
-		return false;
-	}
-
-	arg_info = execute_data->function_state.function->common.arg_info;
-
-	if(arg_info == NULL) {
-		TRACER_FD(entry).param_count = 0;
-		return false;
-	}
-
-	TRACER_FD(entry).param_count = execute_data->function_state.function->common.required_num_args;
-	int len = TRACER_FD(entry).param_count;
-	slog(1,SLOG_INFO,"param_count: %d",len);
-	TRACER_FD(entry).parameters = (char**)emalloc(sizeof(char *)*len);
-	char **dst = TRACER_FD(entry).parameters;
-	if(dst == NULL) {
-		slog(1,SLOG_INFO,"no space for parameters");
-		return false;;
-	}
-	
-	for(int i = 0; i < len; i++) {
-		const char *str = (*arg_info).name;
-		dst[i] = (char*)emalloc(sizeof(char) * 100);
-		TRACER_COPY_STRING(dst[i],str);
-		//slog(1,SLOG_INFO,"parameter%d %s",i,dst[i]);
-		arg_info++;	
-	}
-
-	slog(1,SLOG_INFO,"LOAD PARAMETERS");
-
-	return true;
-	
-}
-
-
-bool load_arguments(tracer_fcall_entry* entry, zend_execute_data *execute_data) {
-
-	slog(1,SLOG_INFO,"LOAD ARGUMENTS");
-	zval**arguments = (zval **)execute_data->function_state.arguments;
-	TRACER_FD(entry).arg_count = execute_data->opline->extended_value;
-	int len = TRACER_FD(entry).arg_count;
-	if(len == 0 || arguments == NULL) return false;
-
-	TRACER_FD(entry).arguments = (char**)emalloc(sizeof(char *)*len);
-	char **dst = TRACER_FD(entry).arguments;
-	if(dst == NULL) {
-		slog(1,SLOG_INFO,"no space for arguments");
-		return false;
-	}
-
-	for(int i = 0; i < len; i++) {
-		zval tmpcopy = **(arguments-len+i);
-		zval_copy_ctor(&tmpcopy);
-		INIT_PZVAL(&tmpcopy);
-		convert_to_string(&tmpcopy);
-		//convert_to_string(*(arguments-len + i));
-		char *str = (char *)Z_STRVAL(tmpcopy);
-		dst[i] = (char*)emalloc(sizeof(char) * 100);
-		TRACER_COPY_STRING(dst[i],str);
-		//slog(1,SLOG_INFO,"argument%d %s",i,dst[i]);
-	}
-	slog(1,SLOG_INFO,"LOAD ARGUMENTS");
-
-	return true;
-}
 
 static void tracer_execute_ex(zend_execute_data *execute_data TSRMLS_DC)
 {
@@ -399,12 +337,12 @@ static void tracer_execute_ex(zend_execute_data *execute_data TSRMLS_DC)
 			
 			 	load_parameters(entry,execute_data);
 			 	//load_arguments(entry,execute_data);
-			 	 for(int i = 0; i < TRACER_FD(entry).param_count; i++) {
-			 	 	slog(1,SLOG_INFO,"param%d %s",i,TRACER_FD(entry).parameters[i]);
-			 	 }
-			 	 for(int i = 0; i < TRACER_FD(entry).arg_count; i++) {
-			 	 	slog(1,SLOG_INFO,"arg%d %s",i,TRACER_FD(entry).arguments[i]);
-			 	 }
+			 	 // for(int i = 0; i < TRACER_FD(entry).param_count; i++) {
+			 	 // 	slog(1,SLOG_INFO,"param%d %s",i,TRACER_FD(entry).parameters[i]);
+			 	 // }
+			 	 // for(int i = 0; i < TRACER_FD(entry).arg_count; i++) {
+			 	 // 	slog(1,SLOG_INFO,"arg%d %s",i,TRACER_FD(entry).arguments[i]);
+			 	 // }
 
 			
 			old_execute_ex(execute_data TSRMLS_CC);
@@ -494,9 +432,9 @@ static void tracer_execute_internal(zend_execute_data *execute_data_ptr, zend_fc
 						new_fcall->data.lineno = execute_data_ptr->opline->lineno;
 					load_parameters(new_fcall,execute_data_ptr);
 					load_arguments(new_fcall,execute_data_ptr);
-					 for(int i = 0; i < TRACER_FD(new_fcall).param_count; i++) {
-			 	 	slog(1,SLOG_INFO,"param%d %s",i,TRACER_FD(new_fcall).parameters[i]);
-			 	 	}
+					 // for(int i = 0; i < TRACER_FD(new_fcall).param_count; i++) {
+			 	 // 	slog(1,SLOG_INFO,"param%d %s",i,TRACER_FD(new_fcall).parameters[i]);
+			 	 // 	}
 				  	//for(int i = 0; i < TRACER_FD(new_fcall).arg_count; i++) {
 				  	//	slog(1,SLOG_INFO,"arg%d %s",i,TRACER_FD(new_fcall).arguments[i]);
 				  	//}
@@ -536,6 +474,7 @@ static void tracer_execute_internal(zend_execute_data *execute_data_ptr, zend_fc
 static void tracer_error_cb(int type, const char *error_filename, const uint error_lineno, const char *format, va_list args)
 {
 	slog(1,SLOG_INFO,"************Test error cb start**********");	
+	php_printf("Test error cb");
 
 	//slog(1,SLOG_INFO,"type: %d, error filename: %s, error lineno: %ld,format: %s",type,error_filename,error_lineno,format);		
 	char *msg;
@@ -559,6 +498,8 @@ static void tracer_error_cb(int type, const char *error_filename, const uint err
 
 static void tracer_throw_exception_hook(zval *exception TSRMLS_DC)
 {
+	slog(1,SLOG_INFO,"************Test exception hook start**********");	
+	php_printf("Test exception hook");
 	zval *message, *file, *line;
 	zval rv;
 	zend_class_entry *default_ce;
@@ -622,8 +563,83 @@ void obtain_request_info() {
   }
 }
 
+bool load_parameters(tracer_fcall_entry* entry,zend_execute_data *execute_data) {
+
+	slog(1,SLOG_INFO,"LOAD PARAMETERS");
+	
+	zend_arg_info* arg_info = NULL;
+	
+	if(execute_data->function_state.function == NULL) {
+		
+		return false;
+	}
+
+	arg_info = execute_data->function_state.function->common.arg_info;
+
+	if(arg_info == NULL) {
+		TRACER_FD(entry).param_count = 0;
+		return false;
+	}
+
+	TRACER_FD(entry).param_count = execute_data->function_state.function->common.required_num_args;
+	int len = TRACER_FD(entry).param_count;
+	slog(1,SLOG_INFO,"param_count: %d",len);
+	TRACER_FD(entry).parameters = (char**)emalloc(sizeof(char *)*len);
+	char **dst = TRACER_FD(entry).parameters;
+	if(dst == NULL) {
+		slog(1,SLOG_INFO,"no space for parameters");
+		return false;;
+	}
+	int i;
+	for(i = 0; i < len; i++) {
+		const char *str = (*arg_info).name;
+		dst[i] = (char*)emalloc(sizeof(char) * 100);
+		TRACER_COPY_STRING(dst[i],str);
+		//slog(1,SLOG_INFO,"parameter%d %s",i,dst[i]);
+		arg_info++;	
+	}
+
+	slog(1,SLOG_INFO,"LOAD PARAMETERS");
+
+	return true;
+	
+}
+
+
+bool load_arguments(tracer_fcall_entry* entry, zend_execute_data *execute_data) {
+
+	slog(1,SLOG_INFO,"LOAD ARGUMENTS");
+	zval**arguments = (zval **)execute_data->function_state.arguments;
+	TRACER_FD(entry).arg_count = execute_data->opline->extended_value;
+	int len = TRACER_FD(entry).arg_count;
+	if(len == 0 || arguments == NULL) return false;
+
+	TRACER_FD(entry).arguments = (char**)emalloc(sizeof(char *)*len);
+	char **dst = TRACER_FD(entry).arguments;
+	if(dst == NULL) {
+		slog(1,SLOG_INFO,"no space for arguments");
+		return false;
+	}
+	int i;
+	for(i = 0; i < len; i++) {
+		zval tmpcopy = **(arguments-len+i);
+		zval_copy_ctor(&tmpcopy);
+		INIT_PZVAL(&tmpcopy);
+		convert_to_string(&tmpcopy);
+		//convert_to_string(*(arguments-len + i));
+		char *str = (char *)Z_STRVAL(tmpcopy);
+		dst[i] = (char*)emalloc(sizeof(char) * 100);
+		TRACER_COPY_STRING(dst[i],str);
+		//slog(1,SLOG_INFO,"argument%d %s",i,dst[i]);
+	}
+	slog(1,SLOG_INFO,"LOAD ARGUMENTS");
+
+	return true;
+}
+
+
 static const char  *convert_arguments(ulong arg_count,char** arguments,bool is_param) {	
-	if(arguments == NULL || arg_count == 0) return " ";
+	/*if(arguments == NULL || arg_count == 0) return " ";
 	
  	string s ="";
 	
@@ -640,14 +656,15 @@ static const char  *convert_arguments(ulong arg_count,char** arguments,bool is_p
 		s+= string(arguments[i]);
 
 	}
-	php_printf(s.c_str());
-	return s.c_str();
+	 
+	return s.c_str();*/
+	return " ";
 	
 }
 
 static void print_and_free_trace(tracer_fcall_entry *entry,int level)
 {
-	if(entry == NULL) return;
+	/*if(entry == NULL) return;
 
 	string blank_char = "";
 	for(int i = 0; i < level; i++)
@@ -669,6 +686,20 @@ static void print_and_free_trace(tracer_fcall_entry *entry,int level)
 	 	TRACER_FD(entry).arg_count,
 	 	convert_arguments(TRACER_FD(entry).arg_count,TRACER_FD(entry).arguments,false)
 	);
+*/
+	//  php_printf("%s%s(%s)(%d--%d, loops: %d,interval: %f, %s, line %d),arguments[%d]: %s</br>",
+	//  	blank_char.c_str(),
+	//  	entry->data.scope_name,
+	// 	convert_arguments(TRACER_FD(entry).param_count,TRACER_FD(entry).parameters,true),
+	//  	entry->data.start,
+	//  	entry->data.end,
+	//  	entry->data.end - entry->data.start,
+	//  	entry->data.interval,
+	//  	NODE_TYPE(entry->data.type),
+	//  	entry->data.lineno,
+	//  	TRACER_FD(entry).arg_count,
+	//  	convert_arguments(TRACER_FD(entry).arg_count,TRACER_FD(entry).arguments,false)
+	// );
 	
 
 	
@@ -684,7 +715,7 @@ static void print_and_free_trace(tracer_fcall_entry *entry,int level)
 		entry->data.lineno);
 */	
 	
-	
+	/*
 	GSList *elist = entry->event_list;
 	if(elist != NULL) {
 		for(int j = 0; j < g_slist_length(entry->event_list); j++)
@@ -715,7 +746,7 @@ static void print_and_free_trace(tracer_fcall_entry *entry,int level)
 
     
     g_slist_free(entry->fcall_list);
- 
+ */
 
 }
 static void print_request_data() {
@@ -786,8 +817,37 @@ const char* get_error_name(int type)
       default: return "Exception";
   }
 }
+static void parse_data() {
+
+	// smart_str str = {0};
+
+		
+      //smart_str_appendc(&str, 'x');
+    //  smart_str_0(&str);
+     //php_printf("value:%s lenght:%zu total:%zu \n", str.c, str.len, str.a);
 
 
+     // smart_str_appends_ex(&str, "dy", 0);
+     // smart_str_0(&str);
+
+
+     // php_printf("value:%s lenght:%zu total:%zu \n", str.c, str.len, str.a);
+     // smart_str_appends(&str, "徐典阳");
+     // smart_str_0(&str);
+
+
+     // php_printf("value:%s lenght:%zu total:%zu \n", str.c, str.len, str.a);
+     // smart_str_append_long(&str, 98);
+     // php_printf("value:%s lenght:%zu total:%zu \n", str.c, str.len, str.a);
+     //smart_str_free(&str);
+}
+
+// static void parse_data() {
+// 	TSRMLS_FETCH();
+// 	tracer_fcall_entry *entry = TRACER_G(fcalls);
+// 	tracer_request_info *request_info = &TRACER_G(request_info);
+
+// } 
 /*
  * Local variables:
  * tab-width: 4

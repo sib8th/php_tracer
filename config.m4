@@ -74,9 +74,11 @@ dnl	  PHP_EVAL_INCLUDE(`pkg-config --cflags glib-2.0`)
 	  PHP_SUBST(PHP_TRACER_SHARED_LIBADD)
 dnl  ],[AC_MSG_ERROR([wrong lib$LIBNAME version or library not found])
 dnl  ])
-  PHP_REQUIRE_CXX()
-  PHP_ADD_LIBRARY(stdc++,"",EXTRA_LDFLAGS)
-  CPPFILE="php_tracer.cpp slog.cpp"
-  PHP_NEW_EXTENSION(php_tracer, $CPPFILE,$ext_shared)    
+
+dnl  PHP_REQUIRE_CXX()
+dnl  PHP_ADD_LIBRARY(stdc++,"",EXTRA_LDFLAGS)
+dnl  CPPFILE="php_tracer.cpp slog.cpp"
+  CFILE="php_tracer.c slog.c php_tracer_public.c"
+  PHP_NEW_EXTENSION(php_tracer, $CFILE,$ext_shared)    
 
 fi

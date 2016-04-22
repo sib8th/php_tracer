@@ -889,7 +889,7 @@ static void parse_request(smart_str *str) {
 	smart_str_appends(str,"\"ts\":");
 	smart_str_wrap_quotes_lc(str,convert_l_pp(TRACER_RI(ts)));
 	smart_str_appends(str,"\"method\":");
-	smart_str_wrap_quotes_s(str,convert_str_pp(TRACER_RI(host)));
+	smart_str_wrap_quotes_s(str,convert_str_pp(TRACER_RI(method)));
 
 	smart_str_appendc(str,'}');
 

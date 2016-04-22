@@ -32,52 +32,53 @@ extern zend_module_entry php_tracer_module_entry;
 #	define PHP_PHP_TRACER_API
 #endif
 
-extern "C" {
+//extern "C" {
 #ifdef ZTS
 #include "TSRM.h"
 #endif
 
+#include <sys/time.h>
 #include <time.h>
-#include <string.h>
 #include <glib.h>
+#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>  
 #include "php_globals.h"
 
-}
-#include <iostream>
-#include <string>
-#include <vector>
-using namespace std;
+//}
+//#include <iostream>
+//#include <string>
+//#include <vector>
+//using namespace std;
 PHP_MINIT_FUNCTION(php_tracer);
 PHP_MSHUTDOWN_FUNCTION(php_tracer);
 PHP_RINIT_FUNCTION(php_tracer);
 PHP_RSHUTDOWN_FUNCTION(php_tracer);
 PHP_MINFO_FUNCTION(php_tracer);
 
-void obtain_request_info();
 
 const char* get_node_type(int type);
 const char* get_event_type(int i);
 const char* get_error_name(int type);
 
+typedef enum { false, true }bool;
 
+/*Error or Caught Exception*/
 typedef struct tracer_event{
 
   uint lineno;
   char *msg;
   int type;
   int event_type;
-  clock_t ts;
 
 }tracer_event;
 
 typedef struct tracer_fcall{
 
-  clock_t start,end;
-  double interval;
+  long start,end;
+  long interval;
   char *scope_name;
-  //string scope_name;
+
   uint lineno;
   int type;
   char **arguments;
@@ -91,7 +92,7 @@ typedef struct tracer_fcall_entry{
 
   tracer_fcall data;
 
-  tracer_fcall_entry * pre_fcall;
+  struct tracer_fcall_entry * pre_fcall;
 
   GSList * fcall_list;
   GSList * event_list;
@@ -107,8 +108,6 @@ typedef struct tracer_request_info{
    zval **method;
    zend_bool is_set;
 }tracer_request_info;
-
-
 
 
 ZEND_BEGIN_MODULE_GLOBALS(php_tracer)
@@ -151,13 +150,14 @@ name->data.scope_name = (char *)emalloc(100*sizeof(char)); \
 name->data.type = 0; \
 name->data.arguments = NULL; \
 name->data.parameters = NULL; \
+name->data.param_count = 0; \
+name->data.arg_count = 0; \
 name->pre_fcall = NULL; \
 name->fcall_list = NULL; \
 name->event_list = NULL; \
 } while(0)
 
  
-
 
 # define zend_is_auto_global_str(name) (zend_is_auto_global(ZEND_STRL((name)) TSRMLS_CC))
 #define TRACER_ERROR 0
@@ -172,12 +172,11 @@ name->type = TRACER_ERROR; \
 name->lineno = 0; \
 } while(0)
 
+
+
 #define TRACER_RI(element) (TRACER_G(request_info).element)
-
 #define TRACER_RI_STRVAL(var)  Z_STRVAL_PP(TRACER_RI(var))
-
 #define TRACER_RI_LVAL(var)  Z_LVAL_PP(TRACER_RI(var))
-
 #define TRACER_INIT_REQUEST(name) \
   //name = (tracer_request_info *) malloc(sizeof(tracer_request_info)); \
   name.host = (char *)emalloc(200*sizeof(char)); \
@@ -186,14 +185,11 @@ name->lineno = 0; \
   name.method = (char *)emalloc(50*sizeof(char)); \
   name.script_name = (char *)emalloc(500*sizeof(char)); \
 
+#define zend_is_auto_global_str(name) (zend_is_auto_global(ZEND_STRL((name)) TSRMLS_CC))
 #define TRACER_FD(fcall) ((fcall)->data)
-
 #define SET_REQUEST_INFO(name, dest, type) \
   zend_hash_find(Z_ARRVAL_P(tmp), name, sizeof(name), (void**)&TRACER_RI(dest))
-
 #define FETCH_HTTP_GLOBALS(name) (tmp = PG(http_globals)[TRACK_VARS_##name])
-
-
 
 
 #define TRACER_COPY_STRING(dst,src)  \
@@ -204,6 +200,18 @@ list = g_slist_append(list,object); \
 } while(0)
 
 
+static void obtain_request_info();
+static bool load_parameters(tracer_fcall_entry* entry,zend_execute_data *execute_data);
+static bool load_arguments(tracer_fcall_entry* entry, zend_execute_data *execute_data);
+static const char  *convert_arguments(ulong arg_count,char** arguments,bool is_param);
+static void parse_data();
+static void parse_fcall(smart_str *str,tracer_fcall_entry* entry);
+static void parse_fcall_data(smart_str *str, tracer_fcall_entry *entry);
+static void parse_event(smart_str *str,tracer_event* event);
+static void parse_request(smart_str *str);
+static void parse_trace(smart_str *str);
+static void print_and_free_trace(tracer_fcall_entry *entry, int level);
+static void print_request_data();
 
 #endif	/* PHP_PHP_TRACER_H */
 

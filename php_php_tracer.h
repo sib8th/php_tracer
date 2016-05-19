@@ -43,6 +43,8 @@ extern zend_module_entry php_tracer_module_entry;
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>  
+#include <uuid/uuid.h>
+
 #include "php_globals.h"
 
 //}
@@ -77,7 +79,10 @@ typedef struct tracer_fcall{
 
   long start,end;
   long interval;
+  char* start_date;
+  char* end_date;
   char *scope_name;
+  char* uuid;
 
   uint lineno;
   int type;
@@ -109,14 +114,25 @@ typedef struct tracer_request_info{
    zend_bool is_set;
 }tracer_request_info;
 
+typedef struct tracer_database{
+    char *sql;
+    long interval;
+    struct tracer_database* next;
+    long timestamp;
+    char *script_name;
+}tracer_database;
 
 ZEND_BEGIN_MODULE_GLOBALS(php_tracer)
 
-	long module_start;
-  long module_end;
+	//long module_start;
+  //long module_end;
   tracer_fcall_entry *fcalls;
   tracer_fcall_entry *current_fcall;
+  GSList *db;
   tracer_request_info request_info;
+  struct timeval timestamp;
+  zend_bool enabled;
+  zend_bool valid;
 
 ZEND_END_MODULE_GLOBALS(php_tracer)
 
@@ -146,6 +162,7 @@ ZEND_END_MODULE_GLOBALS(php_tracer)
 #define TRACER_CREATE_FCALL(name)  \
 do {\
 name = (tracer_fcall_entry *) emalloc(sizeof(tracer_fcall_entry)); \
+name->data.uuid = (char *)emalloc(37*sizeof(char)); \
 name->data.scope_name = (char *)emalloc(100*sizeof(char)); \
 name->data.type = 0; \
 name->data.arguments = NULL; \
@@ -155,6 +172,14 @@ name->data.arg_count = 0; \
 name->pre_fcall = NULL; \
 name->fcall_list = NULL; \
 name->event_list = NULL; \
+name->data.start_date = (char *)emalloc(100*sizeof(char));\
+name->data.end_date = (char *)emalloc(100*sizeof(char));\
+} while(0)
+#define TRACER_CREATE_DB(name)  \
+do {\
+name = (tracer_database *) emalloc(sizeof(tracer_database)); \  
+name->sql = (char *)emalloc(300*sizeof(char));\
+name->script_name = (char *)emalloc(100*sizeof(char));\
 } while(0)
 
  
@@ -202,8 +227,11 @@ list = g_slist_append(list,object); \
 
 static void obtain_request_info();
 static bool load_parameters(tracer_fcall_entry* entry,zend_execute_data *execute_data);
-static bool load_arguments(tracer_fcall_entry* entry, zend_execute_data *execute_data);
+static bool load_arguments(tracer_fcall_entry* entry, zend_execute_data *execute_data TSRMLS_DC);
+static void get_and_print_args();
 static const char  *convert_arguments(ulong arg_count,char** arguments,bool is_param);
+static void parse_database();
+static void parse_db(tracer_database *);
 static void parse_data();
 static void parse_fcall(smart_str *str,tracer_fcall_entry* entry);
 static void parse_fcall_data(smart_str *str, tracer_fcall_entry *entry);

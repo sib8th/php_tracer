@@ -159,6 +159,12 @@ ZEND_END_MODULE_GLOBALS(php_tracer)
 #define NODE_EXTERNAL 2
 #define NODE_USERDEF 3
 #define NODE_TYPE(index)  get_node_type(index)
+#define TRACER_ERROR 0
+#define TRACER_EXCEPTION 1
+#define EVENT_TYPE(index)  get_event_type(index)
+#define ERROR_NAME(index) get_error_name(index)
+
+
 #define TRACER_CREATE_FCALL(name)  \
 do {\
 name = (tracer_fcall_entry *) emalloc(sizeof(tracer_fcall_entry)); \
@@ -177,18 +183,10 @@ name->data.end_date = (char *)emalloc(100*sizeof(char));\
 } while(0)
 #define TRACER_CREATE_DB(name)  \
 do {\
-name = (tracer_database *) emalloc(sizeof(tracer_database)); \  
+name = (tracer_database *) emalloc(sizeof(tracer_database));\  
 name->sql = (char *)emalloc(300*sizeof(char));\
-name->script_name = (char *)emalloc(100*sizeof(char));\
+name->script_name = (char *)emalloc(200*sizeof(char));\
 } while(0)
-
- 
-
-# define zend_is_auto_global_str(name) (zend_is_auto_global(ZEND_STRL((name)) TSRMLS_CC))
-#define TRACER_ERROR 0
-#define TRACER_EXCEPTION 1
-#define EVENT_TYPE(index)  get_event_type(index)
-#define ERROR_NAME(index) get_error_name(index)
 #define TRACER_CREATE_EVENT(name)  \
 do {\
 name = (tracer_event *) emalloc(sizeof(tracer_event)); \
@@ -196,20 +194,11 @@ name->msg = (char *)emalloc(500*sizeof(char)); \
 name->type = TRACER_ERROR; \
 name->lineno = 0; \
 } while(0)
-
-
+ 
 
 #define TRACER_RI(element) (TRACER_G(request_info).element)
 #define TRACER_RI_STRVAL(var)  Z_STRVAL_PP(TRACER_RI(var))
 #define TRACER_RI_LVAL(var)  Z_LVAL_PP(TRACER_RI(var))
-#define TRACER_INIT_REQUEST(name) \
-  //name = (tracer_request_info *) malloc(sizeof(tracer_request_info)); \
-  name.host = (char *)emalloc(200*sizeof(char)); \
-  name.ip = (char *)emalloc(100*sizeof(char)); \
-  name.url = (char *)emalloc(500*sizeof(char)); \
-  name.method = (char *)emalloc(50*sizeof(char)); \
-  name.script_name = (char *)emalloc(500*sizeof(char)); \
-
 #define zend_is_auto_global_str(name) (zend_is_auto_global(ZEND_STRL((name)) TSRMLS_CC))
 #define TRACER_FD(fcall) ((fcall)->data)
 #define SET_REQUEST_INFO(name, dest, type) \
@@ -223,6 +212,22 @@ strcpy(dst,src)
 do { \
 list = g_slist_append(list,object); \
 } while(0)
+
+
+#define TRACER_START(node)\
+do{\
+struct timeval start_time;\
+gettimeofday(&start_time,NULL);\
+node->data.start = start_time.tv_sec * 1000 + start_time.tv_usec / 1000;\
+}while(0)
+#define TRACER_END(node)\
+do{\
+struct timeval end_time;\
+gettimeofday(&end_time,NULL);\
+node->data.end = end_time.tv_sec * 1000 + end_time.tv_usec / 1000;\
+node->data.interval = node->data.end - node->data.start;\
+}while(0)
+
 
 
 static void obtain_request_info();
@@ -242,13 +247,3 @@ static void print_and_free_trace(tracer_fcall_entry *entry, int level);
 static void print_request_data();
 
 #endif	/* PHP_PHP_TRACER_H */
-
-
-/*
- * Local variables:
- * tab-width: 4
- * c-basic-offset: 4
- * End:
- * vim600: noet sw=4 ts=4 fdm=marker
- * vim<600: noet sw=4 ts=4
- */

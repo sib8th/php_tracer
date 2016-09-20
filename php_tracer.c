@@ -111,10 +111,8 @@ static void php_php_tracer_init_globals(zend_php_tracer_globals *php_tracer_glob
 /*
 #if PHP_VERSION_ID >= 50500
 */
-
-
-
-
+static char* tracer_execute_get_function_name(zend_execute_data *execute_data TSRMLS_DC);
+static char* tracer_internal_get_function_name(zend_execute_data *execute_data TSRMLS_DC);
 static void (*old_execute_ex)(zend_execute_data *execute_data TSRMLS_DC);
 static void tracer_execute_ex(zend_execute_data *execute_data TSRMLS_DC);
 static void (*old_execute_internal)(zend_execute_data *execute_data_ptr, zend_fcall_info *fci,int return_value_used TSRMLS_DC);
@@ -126,12 +124,6 @@ static void tracer_error_cb(int type, const char *error_filename, const uint err
 static void (*old_throw_exception_hook)(zval *ex TSRMLS_DC);
 static void tracer_throw_exception_hook(zval *ex TSRMLS_DC);
 static void tracer_event_handler(int event_type,int type,uint lineno,char *msg);
-
-
-
-
-
-
 /*
 #else
 static void (*old_execute)(zend_op_array *op_array TSRMLS_DC);
@@ -170,48 +162,12 @@ PHP_MSHUTDOWN_FUNCTION(php_tracer)
 /* Remove if there's nothing to do at request start */
 /* {{{ PHP_RINIT_FUNCTION
  */
-int get_time_zone() {
-	time_t time_utc;  
-    struct tm tm_local;  
-  
-    // Get the UTC time  
-    time(&time_utc);  
-  
-    // Get the local time  
-    // Use localtime_r for threads safe  
-    localtime_r(&time_utc, &tm_local);  
-  
-    time_t time_local;  
-    struct tm tm_gmt;  
-  
-    // Change tm to time_t   
-    time_local = mktime(&tm_local);  
-  
-    // Change it to GMT tm  
-    gmtime_r(&time_utc, &tm_gmt);  
-  
-    int time_zone = tm_local.tm_hour - tm_gmt.tm_hour;  
-    if (time_zone < -12) {  
-        time_zone += 24;   
-    } else if (time_zone > 12) {  
-        time_zone -= 24;  
-    }
-    return time_zone;
-}
-void  convert_ts_tz(smart_str *str,struct timeval in_time) {
-	char timef[100];
-	strftime(timef,100, "%Y-%m-%d %H:%M:%S",localtime(&in_time.tv_sec));
-	char time_c[100];
-	sprintf(time_c,"%s.%03d%+03d00",timef,in_time.tv_usec / 1000,get_time_zone());
-	smart_str_appends(str,time_c);
-}
 
 PHP_RINIT_FUNCTION(php_tracer)
 {
 	
 	gettimeofday(&TRACER_G(timestamp),NULL);
 	//php_printf("time_zone: %+03d00<br/>",get_time_zone());
-	
 	//php_printf("%s<br/>",convert_ts_tz(request_time));
 	slog_init("/home/liangzx/php/logs/php_tracer","/home/liangzx/php/slog.cfg",2,3,1);
 	if(TRACER_G(enabled)) {
@@ -245,23 +201,19 @@ PHP_RINIT_FUNCTION(php_tracer)
 		if(TRACER_G(valid)) {
 			/*allocate global entry*/
 			TRACER_CREATE_FCALL(TRACER_G(fcalls));
-			if(TRACER_G(fcalls)) {
-				TRACER_G(current_fcall) = TRACER_G(fcalls);
-				TRACER_G(fcalls)->pre_fcall = NULL;
+			tracer_fcall_entry* entry = TRACER_G(fcalls);
+			if(entry) {
+				TRACER_G(current_fcall) = entry;
+				entry->pre_fcall = NULL;
 			}
 			else {
 				slog(2,SLOG_ERROR,"no enough space for TRACER_G(fcalls)!");
 				TRACER_G(valid) = 0;
 			}
-			generate_uuid(TRACER_FD(TRACER_G(fcalls)).uuid);
-			// TRACER_CREATE_DB(TRACER_G(db));
-			// if(TRACER_G(db)) {
-			// 	TRACER_G(fcalls)->next = NULL;
-			// }
-			// else {
-			// 	slog(2,SLOG_ERROR,"no enough space for TRACER_G(db)!");
-			// 	TRACER_G(valid) = 0;
-			// }
+			generate_uuid(TRACER_FD(entry).uuid);
+			TRACER_START(entry);
+			entry->data.type = NODE_ENTRY;//root 
+			TRACER_COPY_STRING(entry->data.scope_name,convert_str_pp(TRACER_RI(script_name)));
 		}
 	}
 	else {
@@ -286,6 +238,7 @@ PHP_RSHUTDOWN_FUNCTION(php_tracer)
 	
 		slog(2,SLOG_INFO,"----------------------TRACE-----------------------");
 
+		TRACER_END(TRACER_G(fcalls));
 			
 		 tracer_fcall_entry *entry =  TRACER_G(fcalls);
 		 if(TRACER_G(valid)){
@@ -335,287 +288,140 @@ PHP_MINFO_FUNCTION(php_tracer)
 /*
 #if PHP_VERSION_ID>=50500
 */
-
-/*
-static void debug_print_backtrace_args(zval *arg_array TSRMLS_DC, smart_str *trace_str)
+static char* tracer_execute_get_function_name(zend_execute_data *execute_data TSRMLS_DC)
 {
-	zval **tmp;
-	HashPosition iterator;
-	int i = 0;
+	if(!execute_data->op_array)	return NULL;
 
-	zend_hash_internal_pointer_reset_ex(arg_array->value.ht, &iterator);
-	while (zend_hash_get_current_data_ex(arg_array->value.ht, (void **) &tmp, &iterator) == SUCCESS) {
-		if (i++) {
-			smart_str_appendl(trace_str, ", ", 2);
-		}
-		append_flat_zval_r(*tmp TSRMLS_CC, trace_str, 0);
-		zend_hash_move_forward_ex(arg_array->value.ht, &iterator);
-	}
+	/**Add User Define Function to Omit
+		if(!strcmp(execute_data->op_array->function_name,'my_function')) return NULL;
+	**/
+
+	return execute_data->op_array->function_name;
 }
-zval *debug_backtrace_get_args(void ***curpos TSRMLS_DC)
+
+static char* tracer_internal_get_function_name(zend_execute_data *execute_data TSRMLS_DC)
 {
-	void **p = *curpos;
-	zval *arg_array, **arg;
-	int arg_count = 
-	(int)(zend_uintptr_t) *p;
 
-	MAKE_STD_ZVAL(arg_array);
-	array_init_size(arg_array, arg_count);
-	p -= arg_count;
-
-	while (--arg_count >= 0) {
-		arg = (zval **) p++;
-		if (*arg) {
-			if (Z_TYPE_PP(arg) != IS_OBJECT) {
-				SEPARATE_ZVAL_TO_MAKE_IS_REF(arg);
-			}
-			Z_ADDREF_PP(arg);
-			add_next_index_zval(arg_array, *arg);
-		} else {
-			add_next_index_null(arg_array);
-		}
+	if(!execute_data->op_array || 
+	       !execute_data->function_state.function ||
+	       !execute_data->function_state.function->common.function_name ||
+	       strstr(execute_data->function_state.function->common.function_name,"__") == 
+	       				execute_data->function_state.function->common.function_name){
+		return NULL;
 	}
+	
+	/**Add Internal Function to Omit
+		if(!strcmp(execute_data->function_state.function->common.function_name,'my_function')) return NULL;
+	**/
 
-	return arg_array;
+	return execute_data->function_state.function->common.function_name;
 }
 
-void get_and_print_args() {
-
-	TSRMLS_FETCH();
-	zend_execute_data *ptr = EG(current_execute_data);
-	zval *arg_array = NULL;
-	smart_str smstr = {0};
-	smart_str *trace_str = &smstr;
-	if ((! ptr->opline) || ((ptr->opline->opcode == ZEND_DO_FCALL_BY_NAME) || (ptr->opline->opcode == ZEND_DO_FCALL))) {
-				if (ptr->function_state.arguments) {
-					arg_array = debug_backtrace_get_args(&ptr->function_state.arguments TSRMLS_CC);
-				}
-			}
-	if (arg_array) {
-			debug_print_backtrace_args(arg_array TSRMLS_CC, trace_str);
-		}
-	slog(1,SLOG_INFO,"get_and_print_args():  %s",smstr.c);
-	smart_str_free(trace_str);
-
-}
-*/
 static void tracer_execute_ex(zend_execute_data *execute_data TSRMLS_DC)
 {
 
 	if(TRACER_G(enabled) && TRACER_G(valid)) {
 
 		slog(2,SLOG_INFO,"************Execute start**********");
-		char timef[100];
-		struct timeval current_time;
-		gettimeofday(&current_time,NULL);
+		char *func_name = tracer_execute_get_function_name(execute_data TSRMLS_CC);
+		if(func_name){
+			//Get the Outmost entry or the caller
+			tracer_fcall_entry *entry = TRACER_G(current_fcall);  
+			if(!entry) return;
 
-		//clock_t execute_start = clock();
+			tracer_fcall_entry* new_fcall = NULL;
+			TRACER_CREATE_FCALL(new_fcall);
+			//add new trace to the function call list of the caller
+			TRACER_ADD_TO_LIST(entry->fcall_list,new_fcall);
+			//Remember outer scope
+			new_fcall->pre_fcall = entry;
+			TRACER_G(current_fcall) = new_fcall;
 
-		tracer_fcall_entry *entry = TRACER_G(current_fcall);  //Get the Outmost entry or the caller
-
-		if(execute_data->op_array) {
-
-			/* Outmost Entry*/
-			if(!execute_data->op_array->function_name) {
-
-				entry->data.start = current_time.tv_sec * 1000 + current_time.tv_usec / 1000;
-				entry->data.type = NODE_ENTRY;
-				if(execute_data->op_array->filename) {
-					/*Get The Name of the script*/
-					TRACER_COPY_STRING(entry->data.scope_name,execute_data->op_array->filename);
-				}
-				else {
-					slog(2,SLOG_ERROR,"Fail to get filename");				
-				}
-				
-				old_execute_ex(execute_data TSRMLS_CC);
-
+			new_fcall->data.type = NODE_USERDEF;
+			TRACER_COPY_STRING(new_fcall->data.scope_name,execute_data->op_array->function_name);
+			if(execute_data->prev_execute_data){
+				new_fcall->data.lineno = execute_data->prev_execute_data->opline->lineno;
 			}
-			/*Enter User Define Function*/
-			else{
-
-				tracer_fcall_entry* new_fcall = NULL;
-				TRACER_CREATE_FCALL(new_fcall);
-				//add new trace to the function call list of the caller
-				TRACER_ADD_TO_LIST(entry->fcall_list,new_fcall);
-				//Remember outer scope
-				new_fcall->pre_fcall = entry;
-				TRACER_G(current_fcall) = new_fcall;
-
-				entry = new_fcall;
-				entry->data.type = NODE_USERDEF;
-				TRACER_COPY_STRING(entry->data.scope_name,execute_data->op_array->function_name);
-				entry->data.start = current_time.tv_sec * 1000 + current_time.tv_usec / 1000;
-				if(execute_data->prev_execute_data)
-					entry->data.lineno = execute_data->prev_execute_data->opline->lineno;
-				
-				 	load_parameters(entry,execute_data);
-				 	load_arguments(entry,execute_data);
-				 	//get_and_print_args();
-				 	 // for(int i = 0; i < TRACER_FD(entry).param_count; i++) {
-				 	 // 	slog(1,SLOG_INFO,"param%d %s",i,TRACER_FD(entry).parameters[i]);
-				 	 // }
-				 	 // for(int i = 0; i < TRACER_FD(entry).arg_count; i++) {
-				 	 // 	slog(1,SLOG_INFO,"arg%d %s",i,TRACER_FD(entry).arguments[i]);
-				 	 // }
-
-				
-				old_execute_ex(execute_data TSRMLS_CC);
-			}
-
+		 	load_parameters(new_fcall,execute_data);
+		 	load_arguments(new_fcall,execute_data);
+			
+			TRACER_START(new_fcall);
+			old_execute_ex(execute_data TSRMLS_CC);
+			TRACER_END(new_fcall);
+			TRACER_G(current_fcall) = new_fcall->pre_fcall;
 		}
-		
-		//Resume caller status
-		if(entry->pre_fcall)
-			TRACER_G(current_fcall) = entry->pre_fcall;
-
-		strftime(timef,100, "%Y-%m-%d %H:%M:%S",localtime(&(current_time.tv_sec))); 
-		php_printf("start time: %s", timef);
-		slog(1,SLOG_INFO,"start time: %s", timef);
-
-		gettimeofday(&current_time,NULL);
-		//clock_t execute_end = clock();
-		entry->data.end = current_time.tv_sec * 1000 + current_time.tv_usec / 1000;
-		//php_printf("data.end: %d ",entry->data.end);
-		//entry->data.interval = (double) ((entry->data.end - entry->data.start) / CLOCKS_PER_SEC);
-		entry->data.interval = entry->data.end - entry->data.start;
-
-		strftime(timef,100, "%Y-%m-%d %H:%M:%S",localtime(&(current_time.tv_sec)));
-		char time_f[100];
-		//sprintf(time_f,100,"complete time:   %s.%d%+03%d00",timef,current_time.tv_usec/1000,get_time_zone());
-		sprintf(time_f,"complete time:   %s.%d%+03d00",timef,current_time.tv_usec/1000,get_time_zone());
-		php_printf("end time: %s<br/>", timef);
-		php_printf(" %s<br/>", time_f);
-		php_printf("end time: %ld<br/>",current_time.tv_sec);
-		slog(1,SLOG_INFO,"end time: %s", timef);
-
+		else {
+			old_execute_ex(execute_data TSRMLS_CC);
+		}
+	
 		slog(2,SLOG_INFO,"************Execute End**********");
 	}
-}
 
-
-/*
-#else
-static void tracer_execute(zend_op_array *op_array TSRMLS_DC)
-{
-	
 }
-#endif
-*/
 
 static void tracer_execute_internal(zend_execute_data *execute_data_ptr, zend_fcall_info *fci,int return_value_used TSRMLS_DC)
 {
 
 	if(TRACER_G(enabled) && TRACER_G(valid)) {
 		slog(2,SLOG_INFO,"************Execute Internal start**********");
-
-		//clock_t internal_start = clock();
-
-		struct timeval current_time;
-		gettimeofday(&current_time,NULL);
-
-		tracer_database *new_db = NULL;
-
-		tracer_fcall_entry *entry = TRACER_G(current_fcall); //Get the caller of internal function
-		if(!entry) {
-			slog(2,SLOG_ERROR,"entry is NULL after enter execute internal");
-			return;
-	 	}
-
-		tracer_fcall_entry *new_fcall = NULL;
 		
+	    char *internal_name = tracer_internal_get_function_name(execute_data_ptr TSRMLS_CC);
+	    if(internal_name){
 
-	    zend_op_array *op_array = execute_data_ptr->op_array;  
-	    const char *internal_name = "Empty";
+	    	//Get the caller of internal function
+			tracer_fcall_entry *entry = TRACER_G(current_fcall); 
+			if(!entry) return;
+			tracer_database *new_db = NULL;
+			tracer_fcall_entry *new_fcall = NULL;
 
-	    if(execute_data_ptr->op_array && 
-	       execute_data_ptr->function_state.function &&
-	       execute_data_ptr->function_state.function->common.function_name){
+			TRACER_CREATE_FCALL(new_fcall);
+		 	TRACER_ADD_TO_LIST(entry->fcall_list,new_fcall);
+			new_fcall->pre_fcall = entry;
+			TRACER_G(current_fcall) = new_fcall;
+			/*Save Function Name*/
+			TRACER_COPY_STRING(new_fcall->data.scope_name,internal_name);
+			/*Save Lineno*/
+			new_fcall->data.lineno = execute_data_ptr->opline->lineno;	
+			/*Save Parameters*/
+			load_parameters(new_fcall,execute_data_ptr);
+			/*Save Arguments*/
+			load_arguments(new_fcall,execute_data_ptr);
 
-			internal_name = execute_data_ptr->function_state.function->common.function_name;
+			/*Db function*/
+			if(strstr(internal_name,"mysql_") == internal_name) {
+				slog(1,SLOG_INFO,"%s",internal_name);
 
-			if(strstr(internal_name,"__") != internal_name) {
-
-				TRACER_CREATE_FCALL(new_fcall);
+				new_fcall->data.type = NODE_DB;
 				
-			 	TRACER_ADD_TO_LIST(entry->fcall_list,new_fcall);
-				new_fcall->pre_fcall = entry;
-				TRACER_G(current_fcall) = new_fcall;
-				new_fcall->data.start = current_time.tv_sec * 1000 + current_time.tv_usec / 1000;
-
-				load_parameters(new_fcall,execute_data_ptr);
-				load_arguments(new_fcall,execute_data_ptr);
-
-				/*Mysql function*/
-				if(strstr(internal_name,"mysql_") == internal_name) {
-					slog(1,SLOG_INFO,"%s",internal_name);
-
-					new_fcall->data.type = NODE_DB;
-					
-					
-					if(strstr(internal_name,"mysql_query") == internal_name) {
-						int i;
-						for(i = 0; i < TRACER_FD(new_fcall).arg_count; i++) {
-							TRACER_CREATE_DB(new_db);
-							new_db->timestamp = new_fcall->data.start;
-							TRACER_COPY_STRING(new_db->sql,TRACER_FD(new_fcall).arguments[i]);
-							TRACER_ADD_TO_LIST(TRACER_G(db),new_db);
-							break;
-			  			}
-			  			TRACER_COPY_STRING(new_db->script_name,TRACER_FD(TRACER_G(fcalls)).scope_name);
-					}
-					// else {
-					// 	TRACER_COPY_STRING(new_db->sql,internal_name);
-					// }
-				 // 	php_printf("sql: %s<br/>",new_db->sql);
-					
-
-					// if(strcmp(internal_name,"mysql_query") == 0) {										
-					// 	slog(1,SLOG_INFO,"mysql_query: %s",execute_data_ptr->function_state.function->common.arg_info->name);
-					// }
+				//Just for display of database in kibana
+				if(strstr(internal_name,"mysql_query") == internal_name) {
+					int i;
+					for(i = 0; i < TRACER_FD(new_fcall).arg_count; i++) {
+						TRACER_CREATE_DB(new_db);
+						new_db->timestamp = new_fcall->data.start;
+						TRACER_COPY_STRING(new_db->sql,TRACER_FD(new_fcall).arguments[i]);
+						TRACER_ADD_TO_LIST(TRACER_G(db),new_db);
+						break;
+		  			}
+		  			TRACER_COPY_STRING(new_db->script_name,TRACER_FD(TRACER_G(fcalls)).scope_name);
 				}
-				/*Other external function*/
-				else {
-					new_fcall->data.type = NODE_EXTERNAL;
-				}
-
-				TRACER_COPY_STRING(new_fcall->data.scope_name,internal_name);
-				if(execute_data_ptr->prev_execute_data != NULL)
-					new_fcall->data.lineno = execute_data_ptr->opline->lineno;
-		
-				//get_and_print_args();
-				// for(int i = 0; i < TRACER_FD(new_fcall).param_count; i++) {
-		 	 	//slog(1,SLOG_INFO,"param%d %s",i,TRACER_FD(new_fcall).parameters[i]);
-		 		//}
-			  	//for(int i = 0; i < TRACER_FD(new_fcall).arg_count; i++) {
-			  	//	slog(1,SLOG_INFO,"arg%d %s",i,TRACER_FD(new_fcall).arguments[i]);
-			  	//}
-			}			 	  	
-		}
-		else {
-				slog(2,SLOG_ERROR,"Internal Function is NULL");	 	
 			}
+			/*Other external function*/
+			else {
+				new_fcall->data.type = NODE_EXTERNAL;
+			}
+			
+			TRACER_START(new_fcall);
+			old_execute_internal(execute_data_ptr,fci,return_value_used TSRMLS_CC);
+			TRACER_END(new_fcall);
+			TRACER_G(current_fcall) = new_fcall->pre_fcall;
 
-
-		old_execute_internal(execute_data_ptr,fci,return_value_used TSRMLS_CC);
-
-		if(new_fcall != NULL){
-				//Resume caller status
-			if(new_fcall->pre_fcall != NULL)
-				TRACER_G(current_fcall) = new_fcall->pre_fcall;
-
-
-			//clock_t internal_end = clock();
-			gettimeofday(&current_time,NULL);
-			new_fcall->data.end = current_time.tv_sec * 1000 + current_time.tv_usec / 1000;
-			//new_fcall->data.interval = (double) ((new_fcall->data.end - new_fcall->data.start) / CLOCKS_PER_SEC);
-			new_fcall->data.interval = new_fcall->data.end - new_fcall->data.start;
-			if(new_db)
+			if(new_db){
 				new_db->interval = new_fcall->data.interval;
-
-
+			}	 	  	
 		}
 		
+	
 		slog(2,SLOG_INFO,"************Execute Internal End**********");
 	}
 }
@@ -690,10 +496,6 @@ static void tracer_event_handler(int event_type,int type,uint lineno,char *msg)
 }
 
 
-
-
-
-
 static void obtain_request_info() {
   zval *tmp;
 
@@ -720,7 +522,6 @@ static bool load_parameters(tracer_fcall_entry* entry,zend_execute_data *execute
 	zend_arg_info* arg_info = NULL;
 	
 	if(execute_data->function_state.function == NULL) {
-		
 		return false;
 	}
 
@@ -755,7 +556,6 @@ static bool load_parameters(tracer_fcall_entry* entry,zend_execute_data *execute
 	
 }
 
-
 static bool load_arguments(tracer_fcall_entry* entry, zend_execute_data *execute_data) {
 
 	slog(1,SLOG_INFO,"LOAD ARGUMENTS");
@@ -786,8 +586,7 @@ static bool load_arguments(tracer_fcall_entry* entry, zend_execute_data *execute
 
 	return true;
 }
-
-
+//convert arguments list to a string
 static const char  *convert_arguments(ulong arg_count,char** arguments,bool is_param) {	
 
 	if(arguments == NULL || arg_count == 0) return " ";
@@ -913,14 +712,7 @@ static void print_and_free_trace(tracer_fcall_entry *entry,int level)
  
 
 }
-static char* convert_str_pp(zval ** val) {
-	if((val) == NULL) return "null";
-	return (char*)Z_STRVAL_PP(val);
-}
-static ulong convert_l_pp(zval ** val) {
-	if((val) == NULL) return 0;
-	return (ulong)Z_LVAL_PP(val);
-} 
+
 static void print_request_data() {
 	slog(1,SLOG_INFO,"----------------REQUEST DATA------------------");
 	//slog(1,SLOG_INFO,"host: %s",TRACER_RI(host)==NULL?"NULL":TRACER_RI_STRVAL(host));
@@ -1077,9 +869,10 @@ static void parse_db(tracer_database *db_item) {
 	//smart_str_append_long(&str,ts->tv_sec * 1000 + ts->tv_usec / 1000);
 	smart_str_append_long(&str,db_item->timestamp);
 	smart_str_appendc(&str,',');
-	smart_str_appends(&str,"\"sql\":");
-	if(db_item->sql)
-	smart_str_wrap_quotes_sc(&str,db_item->sql);
+	if(db_item->sql){
+		smart_str_appends(&str,"\"sql\":");
+		smart_str_wrap_quotes_sc(&str,db_item->sql);
+	}
 	smart_str_appends(&str,"\"interval\":");	
 	smart_str_append_long(&str,db_item->interval);
 	smart_str_appendc(&str,'}');
@@ -1116,7 +909,7 @@ static void parse_request(smart_str *str) {
 	TSRMLS_FETCH();
 	long *t_addr = (long *)convert_l_pp(&TRACER_RI(ts));
 
-	php_printf("------------request time_t: %ld</br>",*t_addr);
+	//php_printf("------------request time_t: %ld</br>",*t_addr);
 	smart_str_appends(str,"\"info\":");
 
 	smart_str_appendc(str,'{');

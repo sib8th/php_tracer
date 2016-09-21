@@ -134,6 +134,9 @@ ZEND_BEGIN_MODULE_GLOBALS(php_tracer)
   struct timeval timestamp;
   zend_bool enabled;
   zend_bool valid;
+  zend_bool event_enabled;
+  zend_bool mysql_enabled;
+  char* application_id;
 
 ZEND_END_MODULE_GLOBALS(php_tracer)
 
@@ -234,6 +237,7 @@ node->data.interval = node->data.end - node->data.start;\
 static void obtain_request_info();
 static bool load_parameters(tracer_fcall_entry* entry,zend_execute_data *execute_data);
 static bool load_arguments(tracer_fcall_entry* entry, zend_execute_data *execute_data TSRMLS_DC);
+static void modify_argument(zend_execute_data *execute_data,const char* suffix);
 static void get_and_print_args();
 static const char  *convert_arguments(ulong arg_count,char** arguments,bool is_param);
 static void parse_database();

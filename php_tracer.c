@@ -82,6 +82,9 @@ ZEND_GET_MODULE(php_tracer)
 /* Remove comments and fill if you need to have entries in php.ini*/
 PHP_INI_BEGIN()
 STD_PHP_INI_BOOLEAN("php_tracer.enabled", "1", PHP_INI_SYSTEM, OnUpdateBool, enabled, zend_php_tracer_globals, php_tracer_globals)
+STD_PHP_INI_BOOLEAN("php_tracer.event_enabled", "1", PHP_INI_SYSTEM, OnUpdateBool, event_enabled, zend_php_tracer_globals, php_tracer_globals)
+STD_PHP_INI_BOOLEAN("php_tracer.mysql_enabled", "1", PHP_INI_PERDIR, OnUpdateBool, mysql_enabled, zend_php_tracer_globals, php_tracer_globals)
+STD_PHP_INI_ENTRY("php_tracer.application_id", "My application", PHP_INI_ALL, OnUpdateString, application_id, zend_php_tracer_globals, php_tracer_globals)
 	//STD_PHP_INI_ENTRY("php_tracer.global_value",      "42", PHP_INI_ALL, OnUpdateLong, global_value, zend_php_tracer_globals, php_tracer_globals)
 	//STD_PHP_INI_ENTRY("php_tracer.global_string", "foobar", PHP_INI_ALL, OnUpdateString, global_string, zend_php_tracer_globals, php_tracer_globals)
     //STD_PHP_INI_ENTRY("php_tracer.module_start",      "0", PHP_INI_ALL, OnUpdateLong, module_start, zend_php_tracer_globals, php_tracer_globals)
@@ -174,6 +177,7 @@ PHP_RINIT_FUNCTION(php_tracer)
 
 		slog(2,SLOG_INFO,"-------------TRACER ENABLED-------------");
 		slog(2,SLOG_INFO,"-------------Request Start-------------");
+		php_printf(TRACER_G(application_id));
 
 
 		obtain_request_info();
@@ -243,7 +247,7 @@ PHP_RSHUTDOWN_FUNCTION(php_tracer)
 		 tracer_fcall_entry *entry =  TRACER_G(fcalls);
 		 if(TRACER_G(valid)){
 			 parse_data();	
-			 parse_database();
+			 //parse_database();
 			 if(entry != NULL) {
 			 	 
 			 	print_and_free_trace(entry,1);
@@ -413,7 +417,7 @@ static void tracer_execute_internal(zend_execute_data *execute_data_ptr, zend_fc
 	    	//Get the caller of internal function
 			tracer_fcall_entry *entry = TRACER_G(current_fcall); 
 			if(!entry) return;
-			tracer_database *new_db = NULL;
+			//tracer_database *new_db = NULL;
 			tracer_fcall_entry *new_fcall = NULL;
 
 			TRACER_CREATE_FCALL(new_fcall);
@@ -426,8 +430,7 @@ static void tracer_execute_internal(zend_execute_data *execute_data_ptr, zend_fc
 			new_fcall->data.lineno = execute_data_ptr->opline->lineno;	
 			/*Save Parameters*/
 			load_parameters(new_fcall,execute_data_ptr);
-			/*Save Arguments*/
-			load_arguments(new_fcall,execute_data_ptr);
+			
 
 			/*Db function*/
 			if(strstr(internal_name,"mysql_") == internal_name) {
@@ -438,29 +441,32 @@ static void tracer_execute_internal(zend_execute_data *execute_data_ptr, zend_fc
 				//Just for display of database in kibana
 				if(strstr(internal_name,"mysql_query") == internal_name) {
 					int i;
-					for(i = 0; i < TRACER_FD(new_fcall).arg_count; i++) {
-						TRACER_CREATE_DB(new_db);
-						new_db->timestamp = new_fcall->data.start;
-						TRACER_COPY_STRING(new_db->sql,TRACER_FD(new_fcall).arguments[i]);
-						TRACER_ADD_TO_LIST(TRACER_G(db),new_db);
-						break;
-		  			}
-		  			TRACER_COPY_STRING(new_db->script_name,TRACER_FD(TRACER_G(fcalls)).scope_name);
+					modify_argument(execute_data_ptr,"/**/");
+					//for(i = 0; i < TRACER_FD(new_fcall).arg_count; i++) {
+						//TRACER_CREATE_DB(new_db);
+						//new_db->timestamp = new_fcall->data.start;
+						//TRACER_COPY_STRING(new_db->sql,TRACER_FD(new_fcall).arguments[i]);
+						//TRACER_ADD_TO_LIST(TRACER_G(db),new_db);
+						//break;
+		  			//}
+		  			//TRACER_COPY_STRING(new_db->script_name,TRACER_FD(TRACER_G(fcalls)).scope_name);
 				}
 			}
 			/*Other external function*/
 			else {
 				new_fcall->data.type = NODE_EXTERNAL;
 			}
-			
+			/*Save Arguments*/
+			load_arguments(new_fcall,execute_data_ptr);
+
 			TRACER_START(new_fcall);
 			old_execute_internal(execute_data_ptr,fci,return_value_used TSRMLS_CC);
 			TRACER_END(new_fcall);
 			TRACER_G(current_fcall) = new_fcall->pre_fcall;
 
-			if(new_db){
-				new_db->interval = new_fcall->data.interval;
-			}	 	  	
+			// if(new_db){
+			// 	new_db->interval = new_fcall->data.interval;
+			// }	 	  	
 		}
 		
 	
@@ -471,54 +477,72 @@ static void tracer_execute_internal(zend_execute_data *execute_data_ptr, zend_fc
 
 static void tracer_error_cb(int type, const char *error_filename, const uint error_lineno, const char *format, va_list args)
 {
-	slog(1,SLOG_INFO,"************Test error cb start**********");	
-	php_printf("Test error cb");
 
-	//slog(1,SLOG_INFO,"type: %d, error filename: %s, error lineno: %ld,format: %s",type,error_filename,error_lineno,format);		
-	char *msg;
-	va_list args_copy;
-	TSRMLS_FETCH();
+	if(TRACER_G(event_enabled)) {
+		slog(1,SLOG_INFO,"************Test error cb start**********");	
+		php_printf("Test error cb");
 
-	/* A copy of args is needed to be used for the old_error_cb */
-	va_copy(args_copy, args);
-	vspprintf(&msg, 0, format, args_copy);
-	va_end(args_copy);
+		//slog(1,SLOG_INFO,"type: %d, error filename: %s, error lineno: %ld,format: %s",type,error_filename,error_lineno,format);		
+		char *msg;
+		va_list args_copy;
+		TSRMLS_FETCH();
 
-	tracer_event_handler(TRACER_ERROR,type,error_lineno,msg);
+		/* A copy of args is needed to be used for the old_error_cb */
+		va_copy(args_copy, args);
+		vspprintf(&msg, 0, format, args_copy);
+		va_end(args_copy);
 
+		tracer_event_handler(TRACER_ERROR,type,error_lineno,msg);
+
+		old_error_cb(type,error_filename,error_lineno,format,args);
+
+		slog(1,SLOG_INFO,"************Test error cb end**********");
+
+	}
 		
-	old_error_cb(type,error_filename,error_lineno,format,args);
+	else {
 
-	slog(1,SLOG_INFO,"************Test error cb end**********");
+		old_error_cb(type,error_filename,error_lineno,format,args);
+	}
+
+	
 
 
 }
 
 static void tracer_throw_exception_hook(zval *exception TSRMLS_DC)
 {
-	slog(1,SLOG_INFO,"************Test exception hook start**********");	
-	php_printf("Test exception hook");
-	zval *message, *file, *line;
-	zval rv;
-	zend_class_entry *default_ce;
+	if(TRACER_G(event_enabled)) {
 
-		if (!exception) {
-			return;
-		}
+		slog(1,SLOG_INFO,"************Test exception hook start**********");	
+		php_printf("Test exception hook");
+		zval *message, *file, *line;
+		zval rv;
+		zend_class_entry *default_ce;
 
-		default_ce = zend_exception_get_default(TSRMLS_C);
+			if (!exception) {
+				return;
+			}
 
-
-		message =  zend_read_property(default_ce, exception, "message", sizeof("message")-1, 0 TSRMLS_CC);
-		file = zend_read_property(default_ce, exception, "file", sizeof("file")-1, 0 TSRMLS_CC);
-		line = zend_read_property(default_ce, exception, "line", sizeof("line")-1, 0 TSRMLS_CC);
-
-		slog(1,SLOG_INFO,"message: %s, file: %s, line: %d",Z_STRVAL_P(message),Z_STRVAL_P(file),Z_LVAL_P(line));
-
-		 tracer_event_handler(TRACER_EXCEPTION,-1,Z_LVAL_P(line),Z_STRVAL_P(message));
+			default_ce = zend_exception_get_default(TSRMLS_C);
 
 
+			message =  zend_read_property(default_ce, exception, "message", sizeof("message")-1, 0 TSRMLS_CC);
+			file = zend_read_property(default_ce, exception, "file", sizeof("file")-1, 0 TSRMLS_CC);
+			line = zend_read_property(default_ce, exception, "line", sizeof("line")-1, 0 TSRMLS_CC);
+
+			slog(1,SLOG_INFO,"message: %s, file: %s, line: %d",Z_STRVAL_P(message),Z_STRVAL_P(file),Z_LVAL_P(line));
+
+			 tracer_event_handler(TRACER_EXCEPTION,-1,Z_LVAL_P(line),Z_STRVAL_P(message));
+
+			 old_throw_exception_hook(exception);
+
+			 slog(1,SLOG_INFO,"************Test exception hook end**********");
+	}
+	else {
+		old_throw_exception_hook(exception);
 		//process_event(APM_EVENT_EXCEPTION, E_EXCEPTION, Z_STRVAL_P(file), Z_LVAL_P(line), Z_STRVAL_P(message) TSRMLS_CC);
+	}
 }
 
 static void tracer_event_handler(int event_type,int type,uint lineno,char *msg)
@@ -632,33 +656,33 @@ static bool load_arguments(tracer_fcall_entry* entry, zend_execute_data *execute
 
 	return true;
 }
-static bool modify_argument(tracer_fcall_entry* entry, zend_execute_data *execute_data) {
+static void modify_argument(zend_execute_data *execute_data,const char* suffix) {
 
 	
 	zval**arguments = (zval **)execute_data->function_state.arguments;
-	TRACER_FD(entry).arg_count = execute_data->opline->extended_value;
-	int len = TRACER_FD(entry).arg_count;
-	if(len == 0 || arguments == NULL) return false;
-
-	TRACER_FD(entry).arguments = (char**)emalloc(sizeof(char *)*len);
-	char **dst = TRACER_FD(entry).arguments;
-	if(dst == NULL) {
-		slog(1,SLOG_INFO,"no space for arguments");
-		return false;
-	}
+	int len = execute_data->opline->extended_value;
+	
 	int i;
 	for(i = 0; i < len; i++) {
 		zval tmpcopy = **(arguments-len+i);
-		//convert_to_string(*(arguments-len + i));
 		char *str = (char *)Z_STRVAL(tmpcopy);
-		//strcat()
-		dst[i] = (char*)emalloc(sizeof(char) * 100);
-		TRACER_COPY_STRING(dst[i],str);
-		//slog(1,SLOG_INFO,"argument%d %s",i,dst[i]);
+
+		php_printf("size: %d %d, %s %s",strlen(str),strlen(suffix),str,suffix);
+		char *newstr = (char *)pemalloc(strlen(str)+strlen(suffix)+2,0);
+		strcat(newstr,str);
+		strcat(newstr,suffix);
+
+		FREE_ZVAL(*(arguments-len+i));
+
+		zval* replace_val;
+		MAKE_STD_ZVAL(replace_val)
+		ZVAL_STRING(replace_val, newstr, 1);
+
+		//char *str = (char *)Z_STRVAL_P(replace_val);	
+		*(arguments-len+i) = (void*)replace_val;
 	}
 	
 
-	return true;
 }
 //convert arguments list to a string
 static const char  *convert_arguments(ulong arg_count,char** arguments,bool is_param) {	

@@ -323,37 +323,79 @@ static void tracer_execute_ex(zend_execute_data *execute_data TSRMLS_DC)
 	if(TRACER_G(enabled) && TRACER_G(valid)) {
 
 		slog(2,SLOG_INFO,"************Execute start**********");
-		char *func_name = tracer_execute_get_function_name(execute_data TSRMLS_CC);
-		if(func_name){
-			//Get the Outmost entry or the caller
-			tracer_fcall_entry *entry = TRACER_G(current_fcall);  
-			if(!entry) return;
 
-			tracer_fcall_entry* new_fcall = NULL;
-			TRACER_CREATE_FCALL(new_fcall);
-			//add new trace to the function call list of the caller
-			TRACER_ADD_TO_LIST(entry->fcall_list,new_fcall);
-			//Remember outer scope
-			new_fcall->pre_fcall = entry;
-			TRACER_G(current_fcall) = new_fcall;
+		// zend_object *object = NULL;
+		// object = Z_OBJ(execute_data->This);
+		// if (object &&
+		// 	execute_data &&
+		// 	execute_data->func->type == ZEND_INTERNAL_FUNCTION &&
+		// 	!execute_data->func->common.scope) {
+		// 	object = NULL;
+		// }
+		// if(object) php_printf("Object Detected................");
 
-			new_fcall->data.type = NODE_USERDEF;
-			TRACER_COPY_STRING(new_fcall->data.scope_name,execute_data->op_array->function_name);
-			if(execute_data->prev_execute_data){
-				new_fcall->data.lineno = execute_data->prev_execute_data->opline->lineno;
+		char *function_name = execute_data->function_state.function->common.function_name;
+		char *class_name = NULL;
+		char *free_class_name = NULL;
+		zend_uint class_name_len = 0;
+		if(function_name) {
+			php_printf("Function Name: %s<br/>",function_name);
+			if (execute_data->object) {
+				if (execute_data->function_state.function->common.scope) {
+					class_name = execute_data->function_state.function->common.scope->name;
+					class_name_len = strlen(class_name);
+				} else {
+					int dup = zend_get_object_classname(execute_data->object, &class_name, &class_name_len TSRMLS_CC);
+					if(!dup) {
+						free_class_name = class_name;
+					}
+				}
+
+				
+			} else if (execute_data->function_state.function->common.scope) {
+				class_name = execute_data->function_state.function->common.scope->name;
+				class_name_len = strlen(class_name);
+			} else {
+				class_name = NULL;
 			}
-		 	load_parameters(new_fcall,execute_data);
-		 	load_arguments(new_fcall,execute_data);
-			
-			TRACER_START(new_fcall);
-			old_execute_ex(execute_data TSRMLS_CC);
-			TRACER_END(new_fcall);
-			TRACER_G(current_fcall) = new_fcall->pre_fcall;
+
+		if(class_name) php_printf("Class_name: %s<br/>",class_name);
+		if(free_class_name) php_printf("Free Class_name: %s<br/>",free_class_name);
+		old_execute_ex(execute_data TSRMLS_CC);
 		}
 		else {
-			old_execute_ex(execute_data TSRMLS_CC);
+			char *func_name = tracer_execute_get_function_name(execute_data TSRMLS_CC);
+
+			if(func_name){
+				//Get the Outmost entry or the caller
+				tracer_fcall_entry *entry = TRACER_G(current_fcall);  
+				if(!entry) return;
+
+				tracer_fcall_entry* new_fcall = NULL;
+				TRACER_CREATE_FCALL(new_fcall);
+				//add new trace to the function call list of the caller
+				TRACER_ADD_TO_LIST(entry->fcall_list,new_fcall);
+				//Remember outer scope
+				new_fcall->pre_fcall = entry;
+				TRACER_G(current_fcall) = new_fcall;
+
+				new_fcall->data.type = NODE_USERDEF;
+				TRACER_COPY_STRING(new_fcall->data.scope_name,execute_data->op_array->function_name);
+				if(execute_data->prev_execute_data){
+					new_fcall->data.lineno = execute_data->prev_execute_data->opline->lineno;
+				}
+			 	load_parameters(new_fcall,execute_data);
+			 	load_arguments(new_fcall,execute_data);
+				
+				TRACER_START(new_fcall);
+				old_execute_ex(execute_data TSRMLS_CC);
+				TRACER_END(new_fcall);
+				TRACER_G(current_fcall) = new_fcall->pre_fcall;
+			}
+			else {
+				old_execute_ex(execute_data TSRMLS_CC);
+			}
 		}
-	
 		slog(2,SLOG_INFO,"************Execute End**********");
 	}
 
@@ -512,6 +554,7 @@ static void obtain_request_info() {
     SET_REQUEST_INFO("SCRIPT_FILENAME", script_name, IS_STRING);
     SET_REQUEST_INFO("REQUEST_METHOD", method, IS_STRING);
     SET_REQUEST_INFO("REMOTE_ADDR", ip, IS_STRING);
+//    SET_REQUEST_INFO("SERVER_PORT", port, IS_LONG);
   }
 }
 
@@ -573,9 +616,12 @@ static bool load_arguments(tracer_fcall_entry* entry, zend_execute_data *execute
 	int i;
 	for(i = 0; i < len; i++) {
 		zval tmpcopy = **(arguments-len+i);
-		zval_copy_ctor(&tmpcopy);
-		INIT_PZVAL(&tmpcopy);
-		convert_to_string(&tmpcopy);
+
+			zval_copy_ctor(&tmpcopy);
+			INIT_PZVAL(&tmpcopy);
+			convert_to_string(&tmpcopy);
+
+
 		//convert_to_string(*(arguments-len + i));
 		char *str = (char *)Z_STRVAL(tmpcopy);
 		dst[i] = (char*)emalloc(sizeof(char) * 100);
@@ -583,6 +629,34 @@ static bool load_arguments(tracer_fcall_entry* entry, zend_execute_data *execute
 		//slog(1,SLOG_INFO,"argument%d %s",i,dst[i]);
 	}
 	slog(1,SLOG_INFO,"LOAD ARGUMENTS");
+
+	return true;
+}
+static bool modify_argument(tracer_fcall_entry* entry, zend_execute_data *execute_data) {
+
+	
+	zval**arguments = (zval **)execute_data->function_state.arguments;
+	TRACER_FD(entry).arg_count = execute_data->opline->extended_value;
+	int len = TRACER_FD(entry).arg_count;
+	if(len == 0 || arguments == NULL) return false;
+
+	TRACER_FD(entry).arguments = (char**)emalloc(sizeof(char *)*len);
+	char **dst = TRACER_FD(entry).arguments;
+	if(dst == NULL) {
+		slog(1,SLOG_INFO,"no space for arguments");
+		return false;
+	}
+	int i;
+	for(i = 0; i < len; i++) {
+		zval tmpcopy = **(arguments-len+i);
+		//convert_to_string(*(arguments-len + i));
+		char *str = (char *)Z_STRVAL(tmpcopy);
+		//strcat()
+		dst[i] = (char*)emalloc(sizeof(char) * 100);
+		TRACER_COPY_STRING(dst[i],str);
+		//slog(1,SLOG_INFO,"argument%d %s",i,dst[i]);
+	}
+	
 
 	return true;
 }
@@ -923,6 +997,13 @@ static void parse_request(smart_str *str) {
 	smart_str_appends(str,"\"script_name\":");
 	smart_str_wrap_quotes_sc(str,convert_str_pp(TRACER_RI(script_name)));
 	long * l = (long *)convert_l_pp(&TRACER_RI(ts));
+	//long * port = (long *)convert_l_pp(&TRACER_RI(port));
+	//smart_str_appends(str,"\"port\":");
+	//smart_str_append_long(str,*port);
+	smart_str_appendc(str,',');
+
+
+
 	//request timestamp in seconds
 	//php_printf("request timestamp: %ld",*l);
 	// smart_str_appends(str,"\"timestamp\":");
